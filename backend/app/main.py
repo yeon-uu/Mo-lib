@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
+from app.api import recommendation, map 
 
 app = FastAPI(
     title="Mo:lib",
@@ -22,6 +23,9 @@ def _setup_cors(application: FastAPI, settings: Settings) -> None:
 
 
 _setup_cors(app, get_settings())
+# 라우터 등록                                    
+app.include_router(recommendation.router, prefix="/api/v1")
+app.include_router(map.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["health"])
