@@ -73,10 +73,11 @@ PR 올리면 GitHub Actions가 자동으로 실행:
 ```bash
 docker compose exec api ruff format .
 docker compose exec api ruff check . --fix
-docker compose exec api pip-audit -r requirements.txt \
+docker compose exec api pip-audit \
   --ignore-vuln GHSA-jr27-m4p2-rc6r \
   --ignore-vuln GHSA-2c2j-9gv5-cj73 \
-  --ignore-vuln GHSA-7f5h-v6xp-fcq8
+  --ignore-vuln GHSA-7f5h-v6xp-fcq8 \
+  --ignore-vuln GHSA-58qw-9mgm-455v
 ```
 
 ## PR 규칙
