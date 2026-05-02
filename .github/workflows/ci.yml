@@ -9,6 +9,9 @@ on:
 jobs:
   lint-and-audit:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
 
     steps:
       # 1. 코드 체크아웃
