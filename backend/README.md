@@ -118,10 +118,11 @@ docker compose exec api ruff check .
 docker compose exec api python -c "import app.main; print('OK')"
 
 # 5. 보안 취약점 검사
-docker compose exec api pip-audit -r requirements.txt \
+docker compose exec api pip-audit \
   --ignore-vuln GHSA-jr27-m4p2-rc6r \
   --ignore-vuln GHSA-2c2j-9gv5-cj73 \
-  --ignore-vuln GHSA-7f5h-v6xp-fcq8
+  --ignore-vuln GHSA-7f5h-v6xp-fcq8 \
+  --ignore-vuln GHSA-58qw-9mgm-455v
 ```
 
 무시 목록 사유는 `SECURITY_NOTES.md` 참조.

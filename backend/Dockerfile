@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y \
 # 의존성 파일 복사
 COPY requirements.txt .
 
+# pip/wheel 최신화 (보안 취약점 대응)
+RUN pip install --upgrade pip wheel
+
 # Python 패키지 설치
 RUN pip install --no-cache-dir -r requirements.txt
 
