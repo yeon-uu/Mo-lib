@@ -17,9 +17,11 @@ jobs:
         working-directory: ./backend
 
     steps:
-      # 1. 코드 체크아웃
+      # 1. 코드 체크아웃 (fetch-depth: 0 — Gitleaks 전체 히스토리 스캔 필요)
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # 2. Python 3.11 세팅 + pip 캐시 (매 실행마다 풀 설치 방지)
       - name: Set up Python 3.11
