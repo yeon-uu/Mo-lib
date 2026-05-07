@@ -2,41 +2,15 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from app.core.normalizer import ContentItem, normalize_spotify_track
 from app.core.spotify import spotify_client
 
 router = APIRouter(prefix="/search", tags=["search"])
 
 
-class TrackResult(BaseModel):
-    id: str
-    title: str
-    artists: list[str]
-    album: str
-    image_url: str | None
-    release_date: str | None
-    duration_ms: int
-    preview_url: str | None
-    external_url: str
-
-
 class MusicSearchResponse(BaseModel):
-    results: list[TrackResult]
+    results: list[ContentItem]
     total: int
-
-
-def _normalize(item: dict) -> TrackResult:
-    images = item.get("album", {}).get("images", [])
-    return TrackResult(
-        id=item["id"],
-        title=item["name"],
-        artists=[a["name"] for a in item.get("artists", [])],
-        album=item.get("album", {}).get("name", ""),
-        image_url=images[0]["url"] if images else None,
-        release_date=item.get("album", {}).get("release_date"),
-        duration_ms=item.get("duration_ms", 0),
-        preview_url=item.get("preview_url"),
-        external_url=item.get("external_urls", {}).get("spotify", ""),
-    )
 
 
 @router.get("/music", response_model=MusicSearchResponse)
@@ -51,4 +25,4 @@ async def search_music(
     except httpx.HTTPError:
         raise HTTPException(status_code=503, detail="Spotify 서비스에 연결할 수 없습니다.")
 
-    return MusicSearchResponse(results=[_normalize(i) for i in items], total=len(items))
+    return MusicSearchResponse(results=[normalize_spotify_track(i) for i in items], total=len(items))
