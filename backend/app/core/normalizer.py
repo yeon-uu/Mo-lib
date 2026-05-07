@@ -19,6 +19,7 @@ class ContentItem(BaseModel):
 
 # ── Spotify ──────────────────────────────────────────────────────────────────
 
+
 def normalize_spotify_track(item: dict) -> ContentItem:
     """Spotify Search API track 객체 → ContentItem."""
     album = item.get("album", {})
@@ -78,11 +79,14 @@ def normalize_tmdb_movie(item: dict) -> ContentItem:
 
 # ── 알라딘 ───────────────────────────────────────────────────────────────────
 
+
 def normalize_aladin_book(item: dict) -> ContentItem:
     """알라딘 ItemSearch API 객체 → ContentItem."""
     return ContentItem(
         domain="book",
-        external_id=item.get("isbn13") or item.get("isbn") or str(item.get("itemId", "")),
+        external_id=item.get("isbn13")
+        or item.get("isbn")
+        or str(item.get("itemId", "")),
         title=item.get("title", ""),
         subtitle=item.get("author") or None,
         description=item.get("description") or None,

@@ -38,8 +38,9 @@ class SpotifyClient:
                 return self._token
 
             settings = get_settings()
+            secret = settings.SPOTIFY_CLIENT_SECRET.get_secret_value()
             credentials = b64encode(
-                f"{settings.SPOTIFY_CLIENT_ID}:{settings.SPOTIFY_CLIENT_SECRET.get_secret_value()}".encode()
+                f"{settings.SPOTIFY_CLIENT_ID}:{secret}".encode()
             ).decode()
 
             async with httpx.AsyncClient() as client:
