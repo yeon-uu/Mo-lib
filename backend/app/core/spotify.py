@@ -22,12 +22,19 @@ class SpotifyClient:
 
     async def _ensure_token(self) -> str:
         now = datetime.now(timezone.utc)
-        if self._token and (self._token_expires_at - now).total_seconds() > _EXPIRY_BUFFER_SECONDS:
+        if (
+            self._token
+            and (self._token_expires_at - now).total_seconds() > _EXPIRY_BUFFER_SECONDS
+        ):
             return self._token
 
         async with self._lock:
             now = datetime.now(timezone.utc)
-            if self._token and (self._token_expires_at - now).total_seconds() > _EXPIRY_BUFFER_SECONDS:
+            if (
+                self._token
+                and (self._token_expires_at - now).total_seconds()
+                > _EXPIRY_BUFFER_SECONDS
+            ):
                 return self._token
 
             settings = get_settings()
@@ -51,7 +58,8 @@ class SpotifyClient:
                         response.text,
                     )
                     raise httpx.HTTPStatusError(
-                        f"Spotify 토큰 발급 실패 {response.status_code}: {response.text}",
+                        f"Spotify 토큰 발급 실패 "
+                        f"{response.status_code}: {response.text}",
                         request=response.request,
                         response=response,
                     )
@@ -59,7 +67,9 @@ class SpotifyClient:
 
             self._token = data["access_token"]
             expires_in: int = data.get("expires_in", 3600)
-            self._token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+            self._token_expires_at = datetime.now(timezone.utc) + timedelta(
+                seconds=expires_in
+            )
             return self._token
 
     async def search_tracks(self, query: str, limit: int = 20) -> list[dict]:
