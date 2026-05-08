@@ -66,7 +66,7 @@ async def run_stage1(domain: str, metadata: dict) -> dict:
     return parse_llm_response(response.text)
 
 
-async def run_stage2(analysis: dict, history: list, exclude_domains: list) -> dict:
+async def run_stage2(analysis: dict, history: list, exclude_domains: list, exclude_title: str = "") -> dict:
     payload = json.dumps({
         "analysis": analysis,
         "history": history,
@@ -80,8 +80,17 @@ async def run_stage2(analysis: dict, history: list, exclude_domains: list) -> di
     response, grounding_used = call_with_grounding_fallback(contents)
     result = parse_llm_response(response.text)
 
+    # exclude_domains 제거
     for d in exclude_domains:
         result.get("recommendations", {}).pop(d, None)
+
+    # 입력 콘텐츠 제목 제거
+    if exclude_title:
+        for domain_items in result.get("recommendations", {}).values():
+            domain_items[:] = [
+                item for item in domain_items
+                if item.get("title", "").strip() != exclude_title.strip()
+            ]
 
     result["grounding_used"] = grounding_used
     return result

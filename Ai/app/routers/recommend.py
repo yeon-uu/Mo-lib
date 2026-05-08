@@ -63,6 +63,7 @@ async def test_recommend(domain: str, exclude: str = ""):
             analysis=stage1_result.get("analysis", {}),
             history=[],
             exclude_domains=exclude_domains,
+            exclude_title=DOMAIN_SAMPLES[domain].get("title", ""),
         )
 
         return {
