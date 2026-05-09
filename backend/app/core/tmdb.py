@@ -1,10 +1,13 @@
-import httpx
 import logging
+
+import httpx
+
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 _SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
+
 
 class TMDBClient:
     def __init__(self) -> None:
@@ -20,7 +23,7 @@ class TMDBClient:
                         "api_key": self.settings.TMDB_API_KEY,
                         "query": query,
                         "language": "ko-KR",
-                        "include_adult": "false" 
+                        "include_adult": "false",
                     },
                 )
                 response.raise_for_status()
@@ -30,5 +33,6 @@ class TMDBClient:
             except httpx.HTTPError as e:
                 logger.error(f"TMDB API 호출 실패: {str(e)}")
                 raise e
+
 
 tmdb_client = TMDBClient()

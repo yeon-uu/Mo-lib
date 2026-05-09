@@ -1,9 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.aladin import router as aladin_router
 from app.api.spotify import router as spotify_router
 from app.api.tmdb import router as tmdb_router
-from app.api.aladin import router as aladin_router
 from app.config import Settings, get_settings
 
 app = FastAPI(
