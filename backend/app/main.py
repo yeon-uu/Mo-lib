@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.spotify import router as spotify_router
 from app.config import Settings, get_settings
 from app.api import recommendation, map 
 

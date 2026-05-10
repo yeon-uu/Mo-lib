@@ -9,11 +9,19 @@ on:
 jobs:
   lint-and-audit:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    defaults:
+      run:
+        working-directory: ./backend
 
     steps:
-      # 1. 코드 체크아웃
+      # 1. 코드 체크아웃 (fetch-depth: 0 — Gitleaks 전체 히스토리 스캔 필요)
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # 2. Python 3.11 세팅 + pip 캐시 (매 실행마다 풀 설치 방지)
       - name: Set up Python 3.11
@@ -44,9 +52,13 @@ jobs:
       - name: Ruff format check
         run: ruff format --check .
 
-      # 7. pip-audit 보안 취약점 검사
+      # 7. pip-audit 보안 취약점 검사 (무시 사유: SECURITY_NOTES.md 참조)
       - name: pip-audit
-        run: pip-audit -r requirements.txt
+        run: |
+          pip-audit -r requirements.txt \
+            --ignore-vuln GHSA-jr27-m4p2-rc6r \
+            --ignore-vuln GHSA-2c2j-9gv5-cj73 \
+            --ignore-vuln GHSA-7f5h-v6xp-fcq8
 
       # 8. Gitleaks SecretScan
       - name: Gitleaks Secret Scan
