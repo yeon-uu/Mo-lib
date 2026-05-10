@@ -26,6 +26,7 @@ _setup_cors(app, get_settings())
 # 라우터 등록                                    
 app.include_router(recommendation.router, prefix="/api/v1")
 app.include_router(map.router, prefix="/api/v1")
+app.include_router(spotify_router)
 
 
 @app.get("/health", tags=["health"])
