@@ -2,7 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.spotify import router as spotify_router
+from app.api.auth import router as auth_router
 from app.config import Settings, get_settings
+from app.errors import register_error_handlers
 
 app = FastAPI(
     title="Mo:lib",
@@ -24,6 +26,10 @@ def _setup_cors(application: FastAPI, settings: Settings) -> None:
 
 _setup_cors(app, get_settings())
 app.include_router(spotify_router)
+register_error_handlers(app)
+
+# --- routers ---
+app.include_router(auth_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["health"])
