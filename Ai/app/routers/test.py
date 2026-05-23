@@ -2,7 +2,7 @@ import json
 import time
 from fastapi import APIRouter, HTTPException
 from google.genai import errors, types
-from app.config import client, MODEL, GOOGLE_SEARCH_TOOL, ALL_DOMAINS
+from app.config import STAGE1_CLIENT, STAGE1_MODEL, STAGE2_CLIENT, STAGE2_MODEL, GOOGLE_SEARCH_TOOL, ALL_DOMAINS
 from app.prompts.stage2 import STAGE2_SYSTEM_PROMPT
 from app.services.llm import run_stage1, run_stage2, call_with_grounding_fallback
 from app.utils.parser import parse_llm_response
@@ -21,9 +21,9 @@ SAMPLES = {
         "author": "한강",
     },
     "music": {
-        "title": "Blinding Lights", "genre": "Synth-pop",
-        "artist": "The Weeknd",
-        "mood_tags": ["고에너지", "향수", "밤", "드라이브", "긴박함"],
+        "title": "벚꽃엔딩", "genre": "인디팝",
+        "artist": "버스커버스커",
+        "mood_tags": ["설렘", "청춘", "따뜻함", "밝음"]
     },
 }
 
@@ -44,7 +44,7 @@ def validate_recommendations(domain: str, result: dict) -> dict:
     return {
         "input_domain": domain,
         "present_domains": list(recs.keys()),
-        "issues": issues if issues else "이상 없음 ✅",
+        "issues": issues if issues else "이상 없음",
     }
 
 
@@ -57,7 +57,7 @@ def health_check():
 async def test_gemini():
     start = time.time()
     try:
-        response = client.models.generate_content(model=MODEL, contents="안녕! 한 문장으로 대답해줘")
+        response = STAGE1_CLIENT.models.generate_content(model=STAGE1_MODEL, contents="안녕! 한 문장으로 대답해줘")
         return {"response": response.text, "latency_sec": round(time.time() - start, 3)}
     except errors.ClientError as e:
         code = getattr(e, "status_code", None) or getattr(e, "code", None)
@@ -155,8 +155,8 @@ async def test_grounding(title: str = "2026년 개봉 예정인 한국 영화"):
         '존재하지 않거나 확실하지 않으면: {"exists": false}'
     )
     try:
-        response = client.models.generate_content(
-            model=MODEL, contents=f"'{title}'",
+        response = STAGE2_CLIENT.models.generate_content(
+            model=STAGE2_MODEL, contents=f"'{title}'",
             config=types.GenerateContentConfig(system_instruction=system, tools=[GOOGLE_SEARCH_TOOL])
         )
         latency = round(time.time() - start_time, 2)
@@ -172,7 +172,7 @@ async def test_grounding(title: str = "2026년 개봉 예정인 한국 영화"):
 
 
 @router.get("/test-grounding/compare")
-async def compare_grounding(title: str = "아무말대잔치소설2025"):
+async def compare_grounding(title: str = "모립"):
     system = (
         "너는 콘텐츠 실존 여부만 판단하는 검증기다. "
         "입력된 제목과 정확히 일치하는 콘텐츠가 실제로 존재하는지만 판단하라. "
@@ -183,7 +183,10 @@ async def compare_grounding(title: str = "아무말대잔치소설2025"):
     )
     results = {}
     try:
-        res_plain = client.models.generate_content(model=MODEL, contents=f"'{title}'", config=types.GenerateContentConfig(system_instruction=system))
+        res_plain = STAGE2_CLIENT.models.generate_content(
+            model=STAGE2_MODEL, contents=f"'{title}'",
+            config=types.GenerateContentConfig(system_instruction=system)
+        )
         results["without_grounding"] = parse_llm_response(res_plain.text)
     except Exception as e:
         results["without_grounding"] = f"오류: {str(e)}"
@@ -191,7 +194,10 @@ async def compare_grounding(title: str = "아무말대잔치소설2025"):
     time.sleep(1)
 
     try:
-        res_grounded = client.models.generate_content(model=MODEL, contents=f"'{title}'", config=types.GenerateContentConfig(system_instruction=system, tools=[GOOGLE_SEARCH_TOOL]))
+        res_grounded = STAGE2_CLIENT.models.generate_content(
+            model=STAGE2_MODEL, contents=f"'{title}'",
+            config=types.GenerateContentConfig(system_instruction=system, tools=[GOOGLE_SEARCH_TOOL])
+        )
         results["with_grounding"] = parse_llm_response(res_grounded.text)
     except Exception as e:
         results["with_grounding"] = f"오류: {str(e)}"

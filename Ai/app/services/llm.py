@@ -1,7 +1,6 @@
- # run_stage1, run_stage2, call_with_grounding_fallback
 import json
 from google.genai import types
-from app.config import client, MODEL, GOOGLE_SEARCH_TOOL
+from app.config import STAGE1_CLIENT, STAGE1_MODEL, STAGE2_CLIENT, STAGE2_MODEL, GOOGLE_SEARCH_TOOL
 from app.prompts.stage1 import get_stage1_prompt
 from app.prompts.stage2 import STAGE2_SYSTEM_PROMPT
 from app.utils.parser import parse_llm_response
@@ -9,15 +8,15 @@ from app.utils.parser import parse_llm_response
 
 def call_with_grounding_fallback(contents: list) -> tuple[object, bool]:
     try:
-        response = client.models.generate_content(
-            model=MODEL,
+        response = STAGE2_CLIENT.models.generate_content(
+            model=STAGE2_MODEL,
             contents=contents,
             config=types.GenerateContentConfig(tools=[GOOGLE_SEARCH_TOOL])
         )
         return response, True
     except Exception:
-        response = client.models.generate_content(
-            model=MODEL,
+        response = STAGE2_CLIENT.models.generate_content(
+            model=STAGE2_MODEL,
             contents=contents
         )
         return response, False
@@ -55,8 +54,8 @@ async def run_stage1(domain: str, metadata: dict) -> dict:
     system_prompt = get_stage1_prompt(domain)
     user_input = build_stage1_input(domain, metadata)
 
-    response = client.models.generate_content(
-        model=MODEL,
+    response = STAGE1_CLIENT.models.generate_content(
+        model=STAGE1_MODEL,
         contents=user_input,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
@@ -80,11 +79,9 @@ async def run_stage2(analysis: dict, history: list, exclude_domains: list, exclu
     response, grounding_used = call_with_grounding_fallback(contents)
     result = parse_llm_response(response.text)
 
-    # exclude_domains 제거
     for d in exclude_domains:
         result.get("recommendations", {}).pop(d, None)
 
-    # 입력 콘텐츠 제목 제거
     if exclude_title:
         for domain_items in result.get("recommendations", {}).values():
             domain_items[:] = [
