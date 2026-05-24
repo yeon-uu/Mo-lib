@@ -28,7 +28,7 @@ def _setup_cors(application: FastAPI, settings: Settings) -> None:
 _setup_cors(app, get_settings())
 register_error_handlers(app)
 
-# 라우터 등록
+#라우터 등록
 app.include_router(recommendation.router, prefix="/api/v1")
 app.include_router(map.router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
