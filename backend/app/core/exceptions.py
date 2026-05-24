@@ -1,10 +1,7 @@
-from fastapi import Request
-from fastapi.responses import JSONResponse
-
-
 # ─────────────────────────────────────────
 # 커스텀 예외 클래스
 # ─────────────────────────────────────────
+
 
 class MolibException(Exception):
     def __init__(self, code: str, message: str, status_code: int = 400):
@@ -18,7 +15,7 @@ class AIException(MolibException):
         super().__init__(
             code="AI_ERROR",
             message=message,
-            status_code=502
+            status_code=502,
         )
 
 
@@ -27,7 +24,7 @@ class CacheException(MolibException):
         super().__init__(
             code="CACHE_ERROR",
             message=message,
-            status_code=500
+            status_code=500,
         )
 
 
@@ -36,7 +33,7 @@ class NotFoundException(MolibException):
         super().__init__(
             code="NOT_FOUND",
             message=message,
-            status_code=404
+            status_code=404,
         )
 
 
@@ -44,10 +41,11 @@ class NotFoundException(MolibException):
 # 에러 응답 포맷
 # ─────────────────────────────────────────
 
+
 def error_response(code: str, message: str) -> dict:
     return {
         "error": {
             "code": code,
-            "message": message
+            "message": message,
         }
     }
