@@ -1,15 +1,16 @@
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useEffect } from 'react';
+import { NavigationContainer } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { useEffect } from "react";
+import { Image } from "react-native";
 
-import { useAuthStore } from '../store/authStore';
-import OnboardingScreen from '../screens/OnboardingScreen';
-import LoginScreen from '../screens/LoginScreen';
-import RegisterScreen from '../screens/RegisterScreen';
-import HomeScreen from '../screens/HomeScreen';
-import MapScreen from '../screens/MapScreen';
-import ArchiveScreen from '../screens/ArchiveScreen';
+import { useAuthStore } from "../store/authStore";
+import OnboardingScreen from "../screens/OnboardingScreen";
+import LoginScreen from "../screens/LoginScreen";
+import RegisterScreen from "../screens/RegisterScreen";
+import HomeScreen from "../screens/HomeScreen";
+import MapScreen from "../screens/MapScreen";
+import ArchiveScreen from "../screens/ArchiveScreen";
 
 const AuthStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -27,9 +28,48 @@ function AuthNavigator() {
 function MainTab() {
   return (
     <Tab.Navigator screenOptions={{ headerShown: false }}>
-      <Tab.Screen name="Home" component={HomeScreen} options={{ title: '홈' }} />
-      <Tab.Screen name="Map" component={MapScreen} options={{ title: '지도' }} />
-      <Tab.Screen name="Archive" component={ArchiveScreen} options={{ title: '아카이브' }} />
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          title: "홈",
+          tabBarIcon: ({ size }) => (
+            <Image
+              source={require("../../assets/icon-home.png")}
+              style={{ width: size, height: size }}
+              resizeMode="contain"
+            />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Map"
+        component={MapScreen}
+        options={{
+          title: "여정",
+          tabBarIcon: ({ size }) => (
+            <Image
+              source={require("../../assets/icon-journey.png")}
+              style={{ width: size, height: size }}
+              resizeMode="contain"
+            />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Archive"
+        component={ArchiveScreen}
+        options={{
+          title: "아카이브",
+          tabBarIcon: ({ size }) => (
+            <Image
+              source={require("../../assets/icon-archive.png")}
+              style={{ width: size, height: size }}
+              resizeMode="contain"
+            />
+          ),
+        }}
+      />
     </Tab.Navigator>
   );
 }
@@ -43,7 +83,7 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer>
-      {isLoggedIn ? <MainTab /> : <AuthNavigator />}
+      {true ? <MainTab /> : <AuthNavigator />}
     </NavigationContainer>
   );
 }

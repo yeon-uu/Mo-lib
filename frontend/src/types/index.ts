@@ -1,5 +1,5 @@
 // Domain
-export type Domain = 'movie' | 'music' | 'book';
+export type Domain = "movie" | "music" | "book";
 
 // User
 export interface User {
@@ -14,6 +14,12 @@ export interface LastNode {
   title: string;
   domain: Domain;
   image_url: string | null;
+  node_count?: number;
+  last_node?: {
+    id: string;
+    title: string;
+    image_url?: string;
+  };
 }
 
 export interface Map {
