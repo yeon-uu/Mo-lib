@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api import map, recommendation
 from app.api.auth import router as auth_router
 from app.api.spotify import router as spotify_router
 from app.config import Settings, get_settings
@@ -27,7 +28,9 @@ def _setup_cors(application: FastAPI, settings: Settings) -> None:
 _setup_cors(app, get_settings())
 register_error_handlers(app)
 
-# --- routers ---
+# 라우터 등록
+app.include_router(recommendation.router, prefix="/api/v1")
+app.include_router(map.router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(spotify_router)
 
