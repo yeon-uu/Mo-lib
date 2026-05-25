@@ -24,6 +24,7 @@ class TMDBClient:
                         "query": query,
                         "language": "ko-KR",
                         "include_adult": "false",
+                        "page": 1,
                     },
                 )
                 response.raise_for_status()

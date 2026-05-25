@@ -35,8 +35,8 @@ app.include_router(map.router, prefix="/api/v1")
 # --- routers ---
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(spotify_router)
-app.include_router(tmdb_router)
 app.include_router(aladin_router)
+app.include_router(tmdb_router)
 
 
 @app.get("/health", tags=["health"])
