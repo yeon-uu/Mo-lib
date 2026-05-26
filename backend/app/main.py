@@ -32,6 +32,7 @@ register_error_handlers(app)
 
 app.include_router(recommendation.router, prefix="/api/v1")
 app.include_router(map.router, prefix="/api/v1")
+# --- routers ---
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(spotify_router)
 app.include_router(tmdb_router)
