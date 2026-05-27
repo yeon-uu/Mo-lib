@@ -11,10 +11,10 @@ router = APIRouter()
 
 SAMPLES = {
     "film": {
-        "title": "인터스텔라", "genre": "SF",
-        "synopsis": "인류 생존을 위해 우주 웜홀을 통과하는 탐험대의 여정. 시간 왜곡 속에서 아버지와 딸의 유대가 물리 법칙을 초월한다.",
-        "director": "크리스토퍼 놀란", "year": 2014,
-    },
+            "title": "인터스텔라", "genre": "SF",
+            "synopsis": "인류 생존을 위해 우주 웜홀을 통과하는 탐험대의 여정. 시간 왜곡 속에서 아버지와 딸의 유대가 물리 법칙을 초월한다.",
+            "director": "크리스토퍼 놀란", "year": 2014,
+        },
     "book": {
         "title": "채식주의자", "genre": "문학소설",
         "description": "평범한 여성 영혜가 어느 날 육식을 거부하고 식물이 되려 하면서 벌어지는 이야기. 폭력, 욕망, 자유 의지를 탐색한다.",
@@ -23,10 +23,45 @@ SAMPLES = {
     "music": {
         "title": "벚꽃엔딩", "genre": "인디팝",
         "artist": "버스커버스커",
-        "mood_tags": ["설렘", "청춘", "따뜻함", "밝음"]
+        "mood_tags": ["설렘", "청춘", "따뜻함", "밝음"],
+    },
+    # 추가 케이스
+    "film_oldboy": {
+        "title": "올드보이", "genre": "느와르/스릴러",
+        "synopsis": "이유도 모른 채 15년간 감금된 남자가 풀려난 후 진실을 추적한다. 복수와 죄의식, 충격적 반전이 얽힌다.",
+        "director": "박찬욱", "year": 2003,
+    },
+    "film_before_sunrise": {
+        "title": "비포 선라이즈", "genre": "멜로",
+        "synopsis": "기차에서 우연히 만난 두 남녀가 빈에서 하룻밤을 함께 걸으며 나누는 대화와 감정의 기록.",
+        "director": "리처드 링클레이터", "year": 1995,
+    },
+    "film_parasite": {
+        "title": "기생충", "genre": "사회드라마",
+        "synopsis": "반지하에 사는 가족이 부유한 가정에 하나씩 스며들며 벌어지는 계층 갈등과 예기치 못한 파국.",
+        "director": "봉준호", "year": 2019,
+    },
+    "book_demian": {
+        "title": "데미안", "genre": "성장소설",
+        "description": "소년 싱클레어가 데미안을 만나며 선과 악, 자아와 세계의 경계를 탐색하는 내면 성장 서사.",
+        "author": "헤르만 헤세",
+    },
+    "book_kimjiyoung": {
+        "title": "82년생 김지영", "genre": "사회소설",
+        "description": "평범한 여성 김지영의 생애를 통해 한국 사회의 성차별 구조와 여성의 억압된 삶을 사실적으로 조명한다.",
+        "author": "조남주",
+    },
+    "music_clair_de_lune": {
+        "title": "Clair de Lune", "genre": "클래식",
+        "artist": "Claude Debussy",
+        "mood_tags": ["고요함", "몽환", "서정", "내향"],
+    },
+    "music_solo": {
+        "title": "SOLO", "genre": "K-pop",
+        "artist": "JENNIE",
+        "mood_tags": ["자신감", "독립", "세련됨", "당당함"],
     },
 }
-
 
 def validate_recommendations(domain: str, result: dict) -> dict:
     recs = result.get("recommendations", {})
@@ -98,7 +133,6 @@ async def test_stage2():
     start = time.time()
     try:
         contents = [
-            {"role": "user", "parts": [{"text": STAGE2_SYSTEM_PROMPT}]},
             {"role": "user", "parts": [{"text": json.dumps(sample_input, ensure_ascii=False)}]}
         ]
         response, grounding_used = call_with_grounding_fallback(contents)
@@ -129,6 +163,7 @@ async def test_recommend(domain: str, exclude: str = ""):
             history=[],
             exclude_domains=exclude_domains,
             exclude_title=SAMPLES[domain].get("title", ""),
+            input_domain=domain,
         )
 
         return {
@@ -144,11 +179,11 @@ async def test_recommend(domain: str, exclude: str = ""):
             raise HTTPException(status_code=429, detail="API 할당량 초과. 잠시 후 다시 시도해주세요.")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/test/history/two-step")
 async def test_two_step_history():
     start = time.time()
     try:
-        # 1단계: 영화 분석
         step1_analysis = await run_stage1("film", SAMPLES["film"])
         if "error" in step1_analysis:
             raise HTTPException(status_code=500, detail="Step 1 Stage1 파싱 실패")
@@ -157,7 +192,6 @@ async def test_two_step_history():
             {"domain": "film", "title": SAMPLES["film"]["title"], "analysis": step1_analysis}
         ]
 
-        # 2단계: 도서 분석 + 1단계 히스토리 반영
         step2_analysis = await run_stage1("book", SAMPLES["book"])
         if "error" in step2_analysis:
             raise HTTPException(status_code=500, detail="Step 2 Stage1 파싱 실패")
@@ -167,6 +201,7 @@ async def test_two_step_history():
             history=history,
             exclude_domains=["book"],
             exclude_title=SAMPLES["book"]["title"],
+            input_domain="book",
         )
 
         return {
@@ -188,17 +223,16 @@ async def test_two_step_history():
         if code == 429:
             raise HTTPException(status_code=429, detail="API 할당량 초과. 잠시 후 다시 시도해주세요.")
         raise HTTPException(status_code=500, detail=str(e))
-        
+
+
 @router.get("/test/history/three-step")
 async def test_three_step_history():
     start = time.time()
     try:
-        # 1단계: 영화
         step1_analysis = await run_stage1("film", SAMPLES["film"])
         if "error" in step1_analysis:
             raise HTTPException(status_code=500, detail="Step 1 Stage1 파싱 실패")
 
-        # 2단계: 도서
         step2_analysis = await run_stage1("book", SAMPLES["book"])
         if "error" in step2_analysis:
             raise HTTPException(status_code=500, detail="Step 2 Stage1 파싱 실패")
@@ -208,7 +242,6 @@ async def test_three_step_history():
             {"domain": "book", "title": SAMPLES["book"]["title"], "analysis": step2_analysis},
         ]
 
-        # 3단계: 음악 + 누적 히스토리 반영
         step3_analysis = await run_stage1("music", SAMPLES["music"])
         if "error" in step3_analysis:
             raise HTTPException(status_code=500, detail="Step 3 Stage1 파싱 실패")
@@ -218,6 +251,7 @@ async def test_three_step_history():
             history=history,
             exclude_domains=["music"],
             exclude_title=SAMPLES["music"]["title"],
+            input_domain="music",
         )
 
         return {
@@ -239,6 +273,7 @@ async def test_three_step_history():
         if code == 429:
             raise HTTPException(status_code=429, detail="API 할당량 초과. 잠시 후 다시 시도해주세요.")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/test-grounding")
 async def test_grounding(title: str = "2026년 개봉 예정인 한국 영화"):
