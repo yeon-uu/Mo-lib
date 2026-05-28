@@ -10,10 +10,13 @@ import {
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const authAPI = {
   register: (data: { email: string; password: string; nickname: string }) =>
-    apiClient.post<{ message: string; user_id: string }>('/auth/register', data),
+    apiClient.post<{ access_token: string; token_type: string }>('/auth/signup', data),
 
   login: (data: { email: string; password: string }) =>
-    apiClient.post<{ access_token: string; token_type: string; nickname: string }>('/auth/login', data),
+    apiClient.post<{ access_token: string; token_type: string }>('/auth/login', data),
+
+  me: () =>
+    apiClient.get<{ id: string; email: string; nickname: string }>('/auth/me'),
 
   logout: () =>
     apiClient.post<{ message: string }>('/auth/logout'),
