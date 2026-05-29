@@ -150,7 +150,7 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer>
-      {true ? <MainTab /> : <AuthNavigator />}
+      {isLoggedIn ? <MainTab /> : <AuthNavigator />}
     </NavigationContainer>
   );
 }
