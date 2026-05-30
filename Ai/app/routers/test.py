@@ -279,9 +279,13 @@ async def test_three_step_history():
 async def test_grounding(title: str = "2026년 개봉 예정인 한국 영화"):
     start_time = time.time()
     system = (
-        "너는 콘텐츠 실존 여부만 판단하는 검증기다. "
+        f"너는 콘텐츠 실존 여부만 판단하는 검증기다. "
+        f"'{title}'이라는 제목을 가진 영화·도서·음악이 실제로 존재하는지만 판단하라. "
+        f"제목이 정확히 '{title}'인 단일 콘텐츠가 존재해야 true다. "
+        f"'{title}'을 포함하는 검색 결과가 있더라도 제목이 정확히 일치하지 않으면 false다. "
+        f"확실하지 않으면 반드시 false다. "
         "반드시 아래 JSON 형식으로만 응답하라. 다른 문장 일절 금지.\n"
-        '존재하면: {"exists": true, "title": "", "genre": "", "year": "", "creator": ""}\n'
+        '정확히 일치하는 콘텐츠가 존재하면: {"exists": true, "title": "", "genre": "", "year": "", "creator": ""}\n'
         '존재하지 않거나 확실하지 않으면: {"exists": false}'
     )
     try:
@@ -302,14 +306,16 @@ async def test_grounding(title: str = "2026년 개봉 예정인 한국 영화"):
 
 
 @router.get("/test-grounding/compare")
-async def compare_grounding(title: str = "모립"):
+async def compare_grounding(title: str = "2026년 개봉하는 영화"):
     system = (
-        "너는 콘텐츠 실존 여부만 판단하는 검증기다. "
-        "입력된 제목과 정확히 일치하는 콘텐츠가 실제로 존재하는지만 판단하라. "
-        "유사한 제목, 부분 일치, 추정은 모두 존재하지 않음으로 처리한다. "
+        f"너는 콘텐츠 실존 여부만 판단하는 검증기다. "
+        f"'{title}'이라는 제목을 가진 영화·도서·음악이 실제로 존재하는지만 판단하라. "
+        f"제목이 정확히 '{title}'인 단일 콘텐츠가 존재해야 true다. "
+        f"'{title}'을 포함하는 검색 결과가 있더라도 제목이 정확히 일치하지 않으면 false다. "
+        f"확실하지 않으면 반드시 false다. "
         "반드시 아래 JSON 형식으로만 응답하라. 다른 문장 일절 금지.\n"
-        '정확히 일치하면: {"exists": true, "title": "", "genre": "", "year": "", "creator": ""}\n'
-        '존재하지 않거나 확실하지 않거나 유사 제목이면: {"exists": false}'
+        '정확히 일치하는 콘텐츠가 존재하면: {"exists": true, "title": "", "genre": "", "year": "", "creator": ""}\n'
+        '존재하지 않거나 확실하지 않으면: {"exists": false}'
     )
     results = {}
     try:

@@ -153,6 +153,8 @@ async def run_stage2(analysis: dict, history: list, exclude_domains: list, exclu
         "analysis": analysis,
         "history": trimmed_history,
         "exclude_domains": exclude_domains,
+        "exclude_title": exclude_title,
+        "input_domain": input_domain,
     }, ensure_ascii=False)
 
     contents = [{"role": "user", "parts": [{"text": payload}]}]
@@ -170,13 +172,6 @@ async def run_stage2(analysis: dict, history: list, exclude_domains: list, exclu
             result["recommendations"] = {
                 k: v for k, v in result.get("recommendations", {}).items() if v
             }
-
-            if exclude_title and input_domain:
-                domain_items = result.get("recommendations", {}).get(input_domain, [])
-                result["recommendations"][input_domain] = [
-                    item for item in domain_items
-                    if item.get("title", "").strip() != exclude_title.strip()
-                ]
 
             recs = result.get("recommendations", {})
             total_count = sum(len(v) for v in recs.values())
