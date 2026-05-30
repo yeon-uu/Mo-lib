@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -6,8 +6,8 @@ import {
   TouchableOpacity,
   Text,
   ScrollView,
-  Modal,
-  Animated as RNAnimated,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import Svg from 'react-native-svg';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -16,29 +16,44 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from 'react-native-reanimated';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { CompositeNavigationProp } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors } from '../constants/colors';
 import EdgeLine from '../components/graph/EdgeLine';
 import NodeCircle from '../components/graph/NodeCircle';
+import NodeDetailSheet from '../components/common/NodeDetailSheet';
 import { calculateAllNodePositions, Node as LayoutNode, Edge as LayoutEdge } from '../utils/layoutUtils';
+import ErrorBoundary from '../components/ErrorBoundary';
+import { Node, AIRecommendationItem } from '../types';
+import { RootTabParamList, HomeStackParamList } from '../navigation/types';
+import { recommendationAPI, nodesAPI, edgesAPI } from '../api/endpoints';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// 네비게이션 타입
+type MapRouteProp = RouteProp<RootTabParamList, 'Map'>;
+type MapNavProp = CompositeNavigationProp<
+  BottomTabNavigationProp<RootTabParamList, 'Map'>,
+  NativeStackNavigationProp<HomeStackParamList>
+>;
+
 // 타입 정의
 type DomainType = 'movie' | 'music' | 'book';
+type NodeStatus = 'confirmed' | 'pending';
 
 interface NodeData extends LayoutNode {
   title: string;
   domain: DomainType;
   description: string;
   emotion_tags: string[];
+  nodeStatus?: NodeStatus; // 노드 상태 (기본값: 'confirmed')
+  external_id?: string | null; // 외부 API ID (추천 노드에서 사용)
+  image_url?: string | null; // 이미지 URL
+  reason?: string | null; // 추천 이유 (pending 노드에서 사용)
 }
 
-// 도메인 아이콘
-const DOMAIN_ICONS: Record<DomainType, string> = {
-  movie: '▶',
-  music: '♪',
-  book: '📖',
-};
 
 // 목 데이터 (x, y 좌표 제거 - 레이아웃 알고리즘으로 자동 계산)
 const MOCK_NODES_RAW: NodeData[] = [
@@ -166,10 +181,25 @@ const MOCK_MAPS = [
   { id: 'map3', title: '프로젝트 헤일메리' },
 ];
 
-export default function MapCanvas() {
-  // 레이아웃 알고리즘으로 노드 위치 계산
+function MapCanvasContent() {
+  const navigation = useNavigation<MapNavProp>();
+  const route = useRoute<MapRouteProp>();
+
   const MOCK_NODES = useMemo(() => {
-    return calculateAllNodePositions(MOCK_NODES_RAW, MOCK_EDGES);
+    try {
+      if (!MOCK_NODES_RAW || MOCK_NODES_RAW.length === 0) {
+        return [];
+      }
+
+      if (!MOCK_EDGES || MOCK_EDGES.length === 0) {
+        return MOCK_NODES_RAW.map(node => ({ ...node, x: 0, y: 0 }));
+      }
+
+      const positioned = calculateAllNodePositions(MOCK_NODES_RAW, MOCK_EDGES);
+      return positioned || [];
+    } catch (error) {
+      return [];
+    }
   }, []);
 
   // 별 배경 랜덤 생성
@@ -187,6 +217,15 @@ export default function MapCanvas() {
   // State
   const [selectedMapId, setSelectedMapId] = useState<string>(MOCK_MAPS[MOCK_MAPS.length - 1]?.id || 'map1');
   const [selectedNode, setSelectedNode] = useState<NodeData | null>(null);
+  const [isSheetVisible, setIsSheetVisible] = useState(false);
+  const [mapLoadError, setMapLoadError] = useState<string | null>(null);
+
+  // 추천 관련 상태
+  const [pendingNodes, setPendingNodes] = useState<NodeData[]>([]); // 임시 추천 노드 목록
+  const [pendingEdges, setPendingEdges] = useState<LayoutEdge[]>([]); // 임시 엣지 목록
+  const [isRecommending, setIsRecommending] = useState(false); // 추천 API 호출 중
+  const [sourceNodeForRecommendation, setSourceNodeForRecommendation] = useState<string | null>(null); // 추천 기준 노드 ID
+  const [isPendingMode, setIsPendingMode] = useState(false); // 임시노드 확인 모드
 
   // Reanimated shared values
   const scale = useSharedValue(1);
@@ -195,9 +234,6 @@ export default function MapCanvas() {
   const savedScale = useSharedValue(1);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
-
-  // 바텀시트용 Animated (기존 API 유지)
-  const bottomSheetY = useRef(new RNAnimated.Value(300)).current;
 
   // 팬 제스처
   const panGesture = Gesture.Pan()
@@ -240,18 +276,34 @@ export default function MapCanvas() {
     ],
   }));
 
-  // 선택된 맵의 노드들 필터링
   const selectedMapNodes = useMemo(() => {
-    return MOCK_NODES.filter((node) => node.map_id === selectedMapId);
-  }, [selectedMapId]);
+    try {
+      if (!MOCK_NODES || !Array.isArray(MOCK_NODES) || MOCK_NODES.length === 0) {
+        return [];
+      }
+      const confirmedNodes = MOCK_NODES.filter((node) => node?.map_id === selectedMapId);
+      const allNodes = [...confirmedNodes, ...pendingNodes];
+      return allNodes;
+    } catch (error) {
+      return [];
+    }
+  }, [selectedMapId, MOCK_NODES, pendingNodes]);
 
-  // 선택된 맵의 엣지들 필터링
   const selectedMapEdges = useMemo(() => {
-    const nodeIds = new Set(selectedMapNodes.map((n) => n.id));
-    return MOCK_EDGES.filter(
-      (edge) => nodeIds.has(edge.source_node_id) && nodeIds.has(edge.target_node_id)
-    );
-  }, [selectedMapNodes]);
+    try {
+      if (!selectedMapNodes || selectedMapNodes.length === 0) {
+        return [];
+      }
+      const nodeIds = new Set(selectedMapNodes.map((n) => n?.id).filter(Boolean));
+      const confirmedEdges = MOCK_EDGES.filter(
+        (edge) => edge && nodeIds.has(edge.source_node_id) && nodeIds.has(edge.target_node_id)
+      );
+      const allEdges = [...confirmedEdges, ...pendingEdges];
+      return allEdges;
+    } catch (error) {
+      return [];
+    }
+  }, [selectedMapNodes, pendingEdges]);
 
   // 선택된 맵의 최대 step_order 계산
   const maxStepInMap = useMemo(() => {
@@ -278,8 +330,30 @@ export default function MapCanvas() {
     };
   };
 
-  // 탭 진입 시 마지막 맵의 리프 노드로 자동 포커스
+  // route params에서 mapId 수신 처리
   useEffect(() => {
+    const incomingMapId = route.params?.mapId;
+    setMapLoadError(null);
+
+    if (incomingMapId) {
+      // 해당 mapId가 존재하는지 확인
+      const mapExists = MOCK_MAPS.find(m => m.id === incomingMapId);
+      if (mapExists) {
+        setSelectedMapId(incomingMapId);
+        // 해당 맵의 중심으로 포커스 이동
+        const center = getMapClusterCenter(incomingMapId);
+        const centerX = SCREEN_WIDTH / 2 - center.x;
+        const centerY = SCREEN_HEIGHT / 2 - center.y;
+        translateX.value = centerX;
+        translateY.value = centerY;
+        scale.value = 1;
+        return;
+      } else {
+        // mapId가 유효하지 않은 경우 에러 표시
+        setMapLoadError(`지도를 찾을 수 없습니다 (ID: ${incomingMapId})`);
+      }
+    }
+    // mapId가 없거나 유효하지 않으면 마지막 맵의 리프 노드로 자동 포커스
     if (selectedMapId && selectedMapNodes.length > 0) {
       const maxStep = Math.max(...selectedMapNodes.map((n) => n.step_order));
       const leafNode = selectedMapNodes.find((n) => n.step_order === maxStep);
@@ -292,7 +366,7 @@ export default function MapCanvas() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // 초기 마운트 시에만 실행
+  }, [route.params?.mapId]); // route.params?.mapId 변경 시 실행
 
   // pill 탭 시 포커스 이동
   const handlePillPress = (mapId: string) => {
@@ -319,26 +393,206 @@ export default function MapCanvas() {
     });
   };
 
-  // 노드 클릭 핸들러 - 바텀시트 열기
+  // 노드 클릭 핸들러 - NodeDetailSheet 열기
   const handleNodePress = (id: string) => {
-    const node = MOCK_NODES.find((n) => n.id === id);
+    // confirmed 노드와 pending 노드 모두에서 검색
+    const node = selectedMapNodes.find((n) => n.id === id);
     if (node) {
-      setSelectedNode(node);
-      RNAnimated.spring(bottomSheetY, {
-        toValue: 0,
-        useNativeDriver: true,
-      }).start();
+      setSelectedNode(node as NodeData);
+      setIsSheetVisible(true);
     }
   };
 
-  // 바텀시트 닫기
-  const closeBottomSheet = () => {
-    RNAnimated.spring(bottomSheetY, {
-      toValue: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      setSelectedNode(null);
-    });
+  // NodeDetailSheet 닫기
+  const closeNodeDetailSheet = () => {
+    setIsSheetVisible(false);
+    setSelectedNode(null);
+  };
+
+  // [과몰입 계속하기] 핸들러 - confirmed 노드에서 추천 받기
+  const handleContinueObsession = async () => {
+    if (!selectedNode || selectedNode.nodeStatus === 'pending') return;
+
+    const nodeId = selectedNode.id;
+    const nodeTitle = selectedNode.title;
+    const nodeDomain = selectedNode.domain;
+    // external_id가 있으면 사용, 없으면 nodeId를 임시로 사용
+    const contentId = selectedNode.external_id || nodeId; // TODO: external_id가 null인 경우 백엔드 처리 확인 필요
+
+    // Sheet 닫기
+    setIsSheetVisible(false);
+    setSelectedNode(null);
+
+    // 로딩 시작
+    setIsRecommending(true);
+    setSourceNodeForRecommendation(nodeId);
+
+    try {
+      // 1. 추천 API 호출
+      const res = await recommendationAPI.get({
+        content_id: contentId,
+        title: nodeTitle,
+        domain: nodeDomain,
+      });
+
+      const recommendationsObj = res.data.recommendations || {};
+
+      // 2. 모든 도메인의 추천 아이템을 flat하게 합침 (최대 3개)
+      const allRecommendations: Array<AIRecommendationItem & { domain: string }> = [];
+      Object.entries(recommendationsObj).forEach(([domain, items]) => {
+        (items as AIRecommendationItem[]).forEach(item => {
+          allRecommendations.push({ ...item, domain });
+        });
+      });
+
+      const topRecommendations = allRecommendations.slice(0, 3);
+
+      // 3. pending 노드 생성
+      // 기준 노드(source)의 좌표 가져오기 - selectedMapNodes(layoutNodes)에서 찾기
+      const sourceNode = selectedMapNodes.find(n => n.id === nodeId);
+      if (!sourceNode || sourceNode.x === undefined || sourceNode.y === undefined) {
+        throw new Error('기준 노드의 좌표를 찾을 수 없습니다.');
+      }
+
+      const sourceX = sourceNode.x;
+      const sourceY = sourceNode.y;
+      const NODE_SPACING = 200; // 노드 간 간격 (기존 150 → 200으로 확대)
+      const COLLISION_RADIUS = 80; // 충돌 감지 반경
+
+      // 충돌 감지 함수: 주어진 좌표가 기존 노드와 겹치는지 확인
+      const isOverlapping = (x: number, y: number, existingNodes: Array<{ x?: number; y?: number }>, radius: number = COLLISION_RADIUS): boolean => {
+        return existingNodes.some(node => {
+          if (node.x === undefined || node.y === undefined) return false;
+          const distance = Math.sqrt(Math.pow(node.x - x, 2) + Math.pow(node.y - y, 2));
+          return distance < radius;
+        });
+      };
+
+      // pending 노드 초기 위치 계산 (아래 방향 고정)
+      // 노드 1: 왼쪽 하단 (x - 간격, y + 간격)
+      // 노드 2: 중앙 하단 (x, y + 간격)
+      // 노드 3: 오른쪽 하단 (x + 간격, y + 간격)
+      const initialPositions = [
+        { x: sourceX - NODE_SPACING, y: sourceY + NODE_SPACING }, // 왼쪽
+        { x: sourceX, y: sourceY + NODE_SPACING },                // 중앙
+        { x: sourceX + NODE_SPACING, y: sourceY + NODE_SPACING }, // 오른쪽
+      ];
+
+      // 기존 confirmed 노드들만 가져오기 (pending 노드 제외)
+      const confirmedNodesOnly = MOCK_NODES.filter((node) => node?.map_id === selectedMapId);
+
+      // 충돌 방지: 기존 노드와 겹치면 y값 추가로 내리기 (최대 3회 재시도)
+      const pendingPositions = initialPositions.map(pos => {
+        let adjustedY = pos.y;
+        let retries = 0;
+        const maxRetries = 3;
+
+        while (retries < maxRetries && isOverlapping(pos.x, adjustedY, confirmedNodesOnly)) {
+          adjustedY += NODE_SPACING;
+          retries++;
+        }
+
+        return { x: pos.x, y: adjustedY };
+      });
+
+      const newPendingNodes: NodeData[] = topRecommendations.map((rec, index: number) => ({
+        id: `pending-${nodeId}-${index}`,
+        map_id: selectedMapId,
+        title: rec.title,
+        domain: rec.domain as DomainType,
+        description: rec.reason, // description 대신 reason 사용
+        emotion_tags: rec.tags || [], // emotion_tags → tags로 변경
+        is_root: false,
+        step_order: selectedNode.step_order + 1,
+        x: pendingPositions[index].x,
+        y: pendingPositions[index].y,
+        nodeStatus: 'pending',
+        external_id: null, // AIRecommendationItem에는 external_id 없음
+        image_url: null, // AIRecommendationItem에는 image_url 없음
+        reason: rec.connection_keyword, // connection_keyword를 reason으로 저장
+      }));
+
+      // 4. pending 엣지 생성 (source = 선택한 노드, target = 각 pending 노드)
+      const newPendingEdges: LayoutEdge[] = newPendingNodes.map((node) => ({
+        id: `edge-${nodeId}-${node.id}`,
+        source_node_id: nodeId,
+        target_node_id: node.id,
+      }));
+
+      // 5. 상태 업데이트
+      setPendingNodes(newPendingNodes);
+      setPendingEdges(newPendingEdges);
+      setIsPendingMode(true);
+    } catch (err: any) {
+      Alert.alert(
+        '추천 오류',
+        err.message || '추천을 불러오는 중 오류가 발생했어요. 다시 시도해 주세요.'
+      );
+    } finally {
+      setIsRecommending(false);
+    }
+  };
+
+  // [여정에 추가] 핸들러 - pending 노드를 confirmed로 전환
+  const handleAddToJourney = async () => {
+    if (!selectedNode || selectedNode.nodeStatus !== 'pending') return;
+
+    const pendingNode = selectedNode;
+    const parentNodeId = sourceNodeForRecommendation;
+
+    if (!parentNodeId) {
+      Alert.alert('오류', '부모 노드를 찾을 수 없습니다.');
+      return;
+    }
+
+    // Sheet 닫기
+    setIsSheetVisible(false);
+    setSelectedNode(null);
+
+    try {
+      // 1. 노드 추가 API 호출
+      const nodeRes = await nodesAPI.add(selectedMapId, {
+        title: pendingNode.title,
+        domain: pendingNode.domain,
+        step_order: selectedMapNodes.length, // 현재 지도 노드 수 = step_order
+        is_root: false,
+        description: pendingNode.description || null,
+        image_url: pendingNode.image_url || null,
+        emotion_tags: pendingNode.emotion_tags || [],
+        external_id: pendingNode.external_id || null,
+        metadata: {},
+      });
+
+      const newNodeId = nodeRes.data.id;
+
+      // 2. 엣지 추가 API 호출
+      await edgesAPI.save(selectedMapId, {
+        source_node_id: parentNodeId,
+        target_node_id: newNodeId,
+        reason: pendingNode.reason || null, // connection_keyword를 reason으로 전달
+      });
+
+      // 3. pending 노드를 confirmed로 전환
+      setPendingNodes(prev =>
+        prev.map(node =>
+          node.id === pendingNode.id
+            ? { ...node, nodeStatus: 'confirmed' as NodeStatus }
+            : node
+        )
+      );
+    } catch (err: any) {
+      Alert.alert(
+        '추가 오류',
+        err.message || '노드 추가 중 오류가 발생했어요. 다시 시도해 주세요.'
+      );
+    }
+  };
+
+  const handleComplete = () => {
+    setPendingNodes([]);
+    setPendingEdges([]);
+    setIsPendingMode(false);
+    setSourceNodeForRecommendation(null);
   };
 
   // 줌 버튼 핸들러
@@ -358,18 +612,42 @@ export default function MapCanvas() {
     translateY.value = withSpring(0);
   };
 
-
-  // 엣지 좌표 계산
-  const getNodeById = (id: string) => selectedMapNodes.find((n) => n.id === id);
-
-  // CTA 버튼 텍스트 결정
-  const getCtaText = () => {
-    if (!selectedNode) return '여정에 추가';
-    if (selectedNode.is_root || (selectedNode.step_order === maxStepInMap && !selectedNode.is_root)) {
-      return '과몰입 계속하기';
+  const getNodeById = (id: string) => {
+    try {
+      return selectedMapNodes?.find((n) => n?.id === id);
+    } catch (error) {
+      return undefined;
     }
-    return '여정에 추가';
   };
+
+  // 지도 로드 에러
+  if (mapLoadError) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <Text style={styles.errorText}>{mapLoadError}</Text>
+        <Text style={styles.emptyText}>다른 지도를 선택하거나 홈에서 새로 시작하세요.</Text>
+      </View>
+    );
+  }
+
+  // 로딩 상태 체크
+  if (!MOCK_NODES || MOCK_NODES.length === 0) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={Colors.accent.nebulaRose} />
+        <Text style={styles.loadingText}>지도를 불러오는 중...</Text>
+      </View>
+    );
+  }
+
+  // 선택된 맵에 노드가 없는 경우
+  if (!selectedMapNodes || selectedMapNodes.length === 0) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <Text style={styles.emptyText}>선택된 지도에 노드가 없습니다.</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -399,47 +677,65 @@ export default function MapCanvas() {
               <Svg
                 width={SCREEN_WIDTH * 4}
                 height={SCREEN_HEIGHT * 4}
+                viewBox={`${-SCREEN_WIDTH * 2} ${-SCREEN_HEIGHT * 2} ${SCREEN_WIDTH * 4} ${SCREEN_HEIGHT * 4}`}
                 style={styles.svgLayer}
               >
-                {selectedMapEdges.map((edge) => {
-                  const source = getNodeById(edge.source_node_id);
-                  const target = getNodeById(edge.target_node_id);
-                  if (!source || !target) return null;
-                  return (
-                    <EdgeLine
-                      key={edge.id}
-                      sourceX={source.x}
-                      sourceY={source.y}
-                      targetX={target.x}
-                      targetY={target.y}
-                    />
-                  );
+                {selectedMapEdges?.map((edge) => {
+                  try {
+                    const source = getNodeById(edge?.source_node_id);
+                    const target = getNodeById(edge?.target_node_id);
+                    if (!source || !target || source.x === undefined || source.y === undefined || target.x === undefined || target.y === undefined) {
+                      return null;
+                    }
+                    return (
+                      <EdgeLine
+                        key={edge.id}
+                        sourceX={source.x}
+                        sourceY={source.y}
+                        targetX={target.x}
+                        targetY={target.y}
+                      />
+                    );
+                  } catch (error) {
+                    return null;
+                  }
                 })}
               </Svg>
 
-              {/* 노드 레이어 */}
-              {selectedMapNodes.map((node) => (
-                <View
-                  key={node.id}
-                  style={[
-                    styles.nodeWrapper,
-                    {
-                      left: node.x,
-                      top: node.y,
-                    },
-                  ]}
-                >
-                  <NodeCircle
-                    id={node.id}
-                    title={node.title}
-                    domain={node.domain}
-                    is_root={node.is_root}
-                    step_order={node.step_order}
-                    isCurrentLeaf={node.step_order === maxStepInMap && !node.is_root}
-                    onPress={handleNodePress}
-                  />
-                </View>
-              ))}
+              {selectedMapNodes?.map((node) => {
+                try {
+                  if (!node || node.x === undefined || node.y === undefined) {
+                    return null;
+                  }
+                  const isPending = node.nodeStatus === 'pending';
+                  return (
+                    <View
+                      key={node.id}
+                      style={[
+                        styles.nodeWrapper,
+                        {
+                          left: node.x,
+                          top: node.y,
+                          opacity: isPending ? 0.5 : 1.0,
+                        },
+                      ]}
+                    >
+                      <NodeCircle
+                        id={node.id}
+                        title={node.title || 'Untitled'}
+                        domain={node.domain}
+                        is_root={node.is_root || false}
+                        step_order={node.step_order || 0}
+                        isCurrentLeaf={node.step_order === maxStepInMap && !node.is_root && !isPending}
+                        isPending={isPending}
+                        onPress={handleNodePress}
+                      />
+                    </View>
+                  );
+                } catch (error) {
+                  return null;
+                }
+              })}
             </Animated.View>
           </View>
         </GestureDetector>
@@ -489,81 +785,46 @@ export default function MapCanvas() {
           </ScrollView>
         </View>
 
-        {/* 바텀시트 */}
-        <Modal
-          visible={selectedNode !== null}
-          transparent
-          animationType="none"
-          onRequestClose={closeBottomSheet}
-        >
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={closeBottomSheet}
-          >
-            <RNAnimated.View
-              style={[
-                styles.bottomSheet,
-                {
-                  transform: [{ translateY: bottomSheetY }],
-                },
-              ]}
-            >
-              <TouchableOpacity activeOpacity={1}>
-                {selectedNode && (
-                  <View style={styles.bottomSheetContent}>
-                    {/* 상단: 아이콘 + 제목 + 메타 */}
-                    <View style={styles.bottomSheetHeader}>
-                      <Text style={styles.domainIcon}>
-                        {DOMAIN_ICONS[selectedNode.domain]}
-                      </Text>
-                      <View style={styles.bottomSheetHeaderText}>
-                        <Text style={styles.bottomSheetTitle}>
-                          {selectedNode.title}
-                        </Text>
-                        <Text style={styles.bottomSheetMeta}>
-                          {selectedNode.domain} · step {selectedNode.step_order}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {/* 중단: description */}
-                    <Text style={styles.bottomSheetDescription}>
-                      {selectedNode.description}
-                    </Text>
-
-                    {/* emotion_tags */}
-                    <View style={styles.tagsContainer}>
-                      {selectedNode.emotion_tags.map((tag: string, index: number) => (
-                        <View key={index} style={styles.tag}>
-                          <Text style={styles.tagText}>{tag}</Text>
-                        </View>
-                      ))}
-                    </View>
-
-                    {/* 연결 이유 섹션 */}
-                    <View style={styles.connectionSection}>
-                      <Text style={styles.connectionTitle}>연결 이유</Text>
-                      <Text style={styles.connectionText}>
-                        이전 작품과의 감정적 연결성을 바탕으로 추천되었습니다.
-                      </Text>
-                    </View>
-
-                    {/* CTA 버튼 */}
-                    <View style={styles.ctaContainer}>
-                      <TouchableOpacity style={styles.ctaSecondary}>
-                        <Text style={styles.ctaSecondaryText}>상세 보기</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.ctaPrimary}>
-                        <Text style={styles.ctaPrimaryText}>{getCtaText()}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-              </TouchableOpacity>
-            </RNAnimated.View>
+        {/* [완료] 버튼 - isPendingMode일 때만 표시 */}
+        {isPendingMode && (
+          <TouchableOpacity style={styles.completeButton} onPress={handleComplete}>
+            <Text style={styles.completeButtonText}>완료</Text>
           </TouchableOpacity>
-        </Modal>
+        )}
+
+        {/* 추천 로딩 오버레이 */}
+        {isRecommending && (
+          <View style={styles.loadingOverlay}>
+            <View style={styles.loadingBox}>
+              <ActivityIndicator color={Colors.accent.nebulaRose} size="large" />
+              <Text style={styles.loadingText}>추천을 불러오는 중...</Text>
+            </View>
+          </View>
+        )}
+
+        {/* NodeDetailSheet */}
+        <NodeDetailSheet
+          visible={isSheetVisible}
+          onClose={closeNodeDetailSheet}
+          node={selectedNode ? {
+            id: selectedNode.id,
+            map_id: selectedNode.map_id,
+            domain: selectedNode.domain,
+            external_id: selectedNode.external_id || null,
+            title: selectedNode.title,
+            description: selectedNode.description,
+            image_url: selectedNode.image_url || null,
+            emotion_tags: selectedNode.emotion_tags,
+            is_root: selectedNode.is_root,
+            is_archived: false,
+            step_order: selectedNode.step_order,
+            metadata: {},
+            created_at: new Date().toISOString(),
+          } as Node : null}
+          nodeStatus={selectedNode?.nodeStatus || 'confirmed'}
+          onContinueObsession={handleContinueObsession}
+          onAddToJourney={handleAddToJourney}
+        />
       </View>
   );
 }
@@ -573,10 +834,30 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background.deepSpace,
   },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   star: {
     position: 'absolute',
     backgroundColor: Colors.text.starlight,
     borderRadius: 999,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.text.moonmist,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: Colors.text.moonmist,
+    textAlign: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: Colors.accent.nebulaRose,
+    textAlign: 'center',
+    marginBottom: 8,
   },
   canvasContainer: {
     flex: 1,
@@ -662,108 +943,53 @@ const styles = StyleSheet.create({
     color: Colors.text.starlight,
     fontWeight: '600',
   },
-  // 바텀시트 스타일
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+  // [완료] 버튼
+  completeButton: {
+    position: 'absolute',
+    bottom: 80,
+    right: 16,
+    backgroundColor: Colors.accent.nebulaRose,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  bottomSheet: {
+  completeButtonText: {
+    fontSize: 16,
+    color: Colors.text.starlight,
+    fontWeight: '700',
+  },
+  // 로딩 오버레이
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  loadingBox: {
     backgroundColor: Colors.background.nebulaBase,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    minHeight: 300,
-  },
-  bottomSheetContent: {
+    borderRadius: 16,
+    paddingHorizontal: 32,
+    paddingVertical: 24,
+    alignItems: 'center',
     gap: 16,
   },
-  bottomSheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  domainIcon: {
-    fontSize: 24,
-  },
-  bottomSheetHeaderText: {
-    flex: 1,
-  },
-  bottomSheetTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text.starlight,
-  },
-  bottomSheetMeta: {
-    fontSize: 12,
-    color: Colors.text.moonmist,
-    marginTop: 4,
-  },
-  bottomSheetDescription: {
-    fontSize: 14,
-    color: Colors.text.moonmist,
-    lineHeight: 20,
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  tag: {
-    backgroundColor: Colors.background.dust,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-  },
-  tagText: {
-    fontSize: 12,
-    color: Colors.text.moonmist,
-  },
-  connectionSection: {
-    backgroundColor: Colors.background.dust,
-    padding: 12,
-    borderRadius: 12,
-  },
-  connectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.text.starlight,
-    marginBottom: 6,
-  },
-  connectionText: {
-    fontSize: 12,
-    color: Colors.text.moonmist,
-    lineHeight: 18,
-  },
-  ctaContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 8,
-  },
-  ctaSecondary: {
-    flex: 1,
-    backgroundColor: Colors.background.dust,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  ctaSecondaryText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.text.moonmist,
-  },
-  ctaPrimary: {
-    flex: 1,
-    backgroundColor: Colors.accent.nebulaRose,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  ctaPrimaryText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.text.starlight,
-  },
 });
+
+// ErrorBoundary로 감싸서 export
+export default function MapCanvas() {
+  return (
+    <ErrorBoundary>
+      <MapCanvasContent />
+    </ErrorBoundary>
+  );
+}

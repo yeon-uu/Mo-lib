@@ -31,9 +31,8 @@ export default function GraphCanvas() {
   // 최대 step_order 계산
   const maxStep = Math.max(...MOCK_NODES.map((n) => n.step_order));
 
-  // 노드 클릭 핸들러
   const handleNodePress = (id: string) => {
-    console.log('Node pressed:', id);
+    // TODO: 노드 상세 정보 표시
   };
 
   // 줌/패닝 상태

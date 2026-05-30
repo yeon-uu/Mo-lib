@@ -7,7 +7,7 @@ import { useAuthStore } from '../store/authStore';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
-import HomeScreen from '../screens/HomeScreen';
+import HomeStack from './HomeStack';
 import MapCanvas from '../screens/MapCanvas';
 import ArchiveScreen from '../screens/ArchiveScreen';
 
@@ -27,7 +27,7 @@ function AuthNavigator() {
 function MainTab() {
   return (
     <Tab.Navigator screenOptions={{ headerShown: false }}>
-      <Tab.Screen name="Home" component={HomeScreen} options={{ title: '홈' }} />
+      <Tab.Screen name="Home" component={HomeStack} options={{ title: '홈' }} />
       <Tab.Screen name="Map" component={MapCanvas} options={{ title: '지도' }} />
       <Tab.Screen name="Archive" component={ArchiveScreen} options={{ title: '아카이브' }} />
     </Tab.Navigator>

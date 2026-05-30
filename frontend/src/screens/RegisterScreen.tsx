@@ -69,16 +69,38 @@ export default function RegisterScreen() {
 
     try {
       setLoading(true);
-      await authAPI.register({ email, password, nickname });
+
+      const response = await authAPI.register({ email, password, nickname });
+
       Alert.alert("가입 완료", "회원가입이 완료되었습니다.", [
         { text: "확인", onPress: () => navigation.navigate("Login") },
       ]);
     } catch (err: any) {
+
       const status = err.response?.status;
+      const errorDetail = err.response?.data?.detail;
+
       if (status === 400) {
-        Alert.alert("가입 실패", "이미 사용 중인 이메일입니다.");
+        const errorMsg = typeof errorDetail === 'string'
+          ? errorDetail
+          : "이미 사용 중인 이메일입니다.";
+        Alert.alert("가입 실패", errorMsg);
+      } else if (status === 422) {
+        // 유효성 검증 오류
+        const errorMsg = typeof errorDetail === 'string'
+          ? errorDetail
+          : "입력 정보를 확인해주세요.";
+        Alert.alert("입력 오류", errorMsg);
+      } else if (err.code === 'ECONNABORTED' || err.code === 'ERR_NETWORK') {
+        Alert.alert("네트워크 오류", `서버 연결에 실패했습니다.\n서버 URL: ${process.env.EXPO_PUBLIC_API_BASE_URL}`);
       } else {
-        Alert.alert("오류", "회원가입 중 오류가 발생했습니다.");
+        const errorMsg = errorDetail
+          ? (typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail))
+          : "알 수 없는 오류가 발생했습니다.";
+        Alert.alert(
+          "오류",
+          `회원가입 중 오류가 발생했습니다.\n\n상태 코드: ${status || '없음'}\n에러: ${errorMsg}`
+        );
       }
     } finally {
       setLoading(false);

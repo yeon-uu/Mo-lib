@@ -1,10 +1,10 @@
 import { Dimensions } from 'react-native';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // 레이아웃 상수
-const LAYER_SPACING = 180; // 레이어 간 세로 간격
-const NODE_SPACING = 160; // 노드 간 최소 가로 간격
+const VERTICAL_SPACING = 150; // 노드 간 세로 간격
+const HORIZONTAL_SPACING = 150; // 노드 간 가로 간격
 const START_Y = 200; // 시작 Y 좌표
 
 export interface Node {
@@ -27,11 +27,14 @@ export interface PositionedNode extends Node {
 }
 
 /**
- * step_order와 edge 정보를 기반으로 노드 위치를 계산하는 트리 레이아웃 알고리즘
+ * step_order 기반 레이어 레이아웃 알고리즘
+ * - 루트 노드는 상단 중앙에 배치
+ * - step_order가 높을수록 아래쪽에 배치
+ * - 같은 step_order의 노드는 가로로 균등 배치
  */
 export function calculateNodePositions(
   nodes: Node[],
-  edges: Edge[],
+  _edges: Edge[],
   mapId: string
 ): PositionedNode[] {
   // 해당 맵의 노드만 필터링
@@ -43,7 +46,6 @@ export function calculateNodePositions(
 
   // step_order별로 노드 그룹화
   const layerMap = new Map<number, Node[]>();
-  let maxStepOrder = 0;
 
   mapNodes.forEach((node) => {
     const layer = node.step_order;
@@ -51,101 +53,32 @@ export function calculateNodePositions(
       layerMap.set(layer, []);
     }
     layerMap.get(layer)!.push(node);
-    maxStepOrder = Math.max(maxStepOrder, layer);
   });
 
-  // edge 정보로 부모-자식 관계 맵 생성
-  const childrenMap = new Map<string, string[]>();
-  const parentMap = new Map<string, string>();
+  // 캔버스 중심점
+  const centerX = SCREEN_WIDTH * 2;
 
-  edges.forEach((edge) => {
-    if (!childrenMap.has(edge.source_node_id)) {
-      childrenMap.set(edge.source_node_id, []);
-    }
-    childrenMap.get(edge.source_node_id)!.push(edge.target_node_id);
-    parentMap.set(edge.target_node_id, edge.source_node_id);
-  });
-
-  // 루트 노드 찾기
-  const rootNode = mapNodes.find((n) => n.is_root) || mapNodes[0];
-
-  // 노드 위치 저장
+  // 각 레이어의 노드 위치 계산
   const positions = new Map<string, { x: number; y: number }>();
 
-  // DFS로 트리 순회하며 위치 계산
-  function layoutSubtree(nodeId: string, layer: number, leftBound: number, rightBound: number): number {
-    const node = mapNodes.find((n) => n.id === nodeId);
-    if (!node) return leftBound;
-
-    const children = childrenMap.get(nodeId) || [];
-    const y = START_Y + layer * LAYER_SPACING;
-
-    if (children.length === 0) {
-      // 리프 노드: 현재 가능한 왼쪽 경계에 배치
-      const x = leftBound;
-      positions.set(nodeId, { x, y });
-      return x + NODE_SPACING;
-    }
-
-    // 자식 노드들의 위치를 먼저 계산
-    let currentLeft = leftBound;
-    const childPositions: number[] = [];
-
-    children.forEach((childId) => {
-      const childNode = mapNodes.find((n) => n.id === childId);
-      if (childNode) {
-        currentLeft = layoutSubtree(childId, childNode.step_order, currentLeft, rightBound);
-        const childPos = positions.get(childId);
-        if (childPos) {
-          childPositions.push(childPos.x);
-        }
-      }
-    });
-
-    // 부모 노드는 자식들의 중앙에 배치
-    let parentX: number;
-    if (childPositions.length > 0) {
-      const minChildX = Math.min(...childPositions);
-      const maxChildX = Math.max(...childPositions);
-      parentX = (minChildX + maxChildX) / 2;
-    } else {
-      parentX = leftBound;
-    }
-
-    positions.set(nodeId, { x: parentX, y });
-    return currentLeft;
-  }
-
-  // 레이아웃 시작점 계산 (화면 중앙 기준)
-  const startX = SCREEN_WIDTH * 2; // 캔버스 중심
-
-  // 루트부터 레이아웃 시작
-  layoutSubtree(rootNode.id, rootNode.step_order, startX - (mapNodes.length * NODE_SPACING) / 2, startX + (mapNodes.length * NODE_SPACING) / 2);
-
-  // 각 레이어별로 남은 노드들 배치 (연결되지 않은 노드가 있을 경우)
   layerMap.forEach((layerNodes, layer) => {
-    let unpositionedNodes = layerNodes.filter((n) => !positions.has(n.id));
+    const y = START_Y + layer * VERTICAL_SPACING;
+    const nodeCount = layerNodes.length;
 
-    if (unpositionedNodes.length > 0) {
-      // 이미 배치된 노드들의 최대 X 좌표 찾기
-      let maxX = startX;
-      positions.forEach((pos) => {
-        maxX = Math.max(maxX, pos.x);
-      });
+    // 레이어 전체 너비 계산
+    const totalWidth = (nodeCount - 1) * HORIZONTAL_SPACING;
+    const startX = centerX - totalWidth / 2;
 
-      unpositionedNodes.forEach((node) => {
-        maxX += NODE_SPACING;
-        positions.set(node.id, {
-          x: maxX,
-          y: START_Y + layer * LAYER_SPACING,
-        });
-      });
-    }
+    // 각 노드를 균등하게 배치
+    layerNodes.forEach((node, index) => {
+      const x = startX + index * HORIZONTAL_SPACING;
+      positions.set(node.id, { x, y });
+    });
   });
 
   // 최종 결과 생성
   return mapNodes.map((node) => {
-    const pos = positions.get(node.id) || { x: startX, y: START_Y };
+    const pos = positions.get(node.id) || { x: centerX, y: START_Y };
     return {
       ...node,
       x: pos.x,
@@ -166,7 +99,7 @@ export function calculateAllNodePositions(
   let allPositionedNodes: PositionedNode[] = [];
   let currentXOffset = 0;
 
-  mapIds.forEach((mapId, index) => {
+  mapIds.forEach((mapId) => {
     const mapPositionedNodes = calculateNodePositions(nodes, edges, mapId);
 
     // 각 맵 클러스터를 가로로 배치 (겹치지 않도록)
@@ -182,7 +115,7 @@ export function calculateAllNodePositions(
       const maxX = Math.max(...mapPositionedNodes.map((n) => n.x));
       const minX = Math.min(...mapPositionedNodes.map((n) => n.x));
       const clusterWidth = maxX - minX;
-      currentXOffset += clusterWidth + NODE_SPACING * 3; // 맵 간 여유 공간
+      currentXOffset += clusterWidth + HORIZONTAL_SPACING * 3; // 맵 간 여유 공간
     }
   });
 

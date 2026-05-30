@@ -15,7 +15,6 @@ import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { authAPI } from "../api/endpoints";
 import { useAuthStore } from "../store/authStore";
-import { Colors } from "../constants/colors";
 
 type AuthStackParamList = {
   Onboarding: undefined;
@@ -33,51 +32,35 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 웹과 네이티브 모두에서 작동하는 Alert
-  const showAlert = (title: string, message: string) => {
-    if (Platform.OS === 'web') {
-      window.alert(`${title}\n\n${message}`);
-    } else {
-      Alert.alert(title, message);
-    }
-  };
-
   const handleLogin = async () => {
-    console.log('🔵 로그인 버튼 클릭됨', { email, password: '***' });
-
     if (!email || !password) {
-      showAlert("알림", "이메일과 비밀번호를 입력해주세요.");
+      Alert.alert("알림", "이메일과 비밀번호를 입력해주세요.");
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      showAlert("알림", "올바른 이메일 형식을 입력해주세요.");
+      Alert.alert("알림", "올바른 이메일 형식을 입력해주세요.");
       return;
     }
 
     try {
       setLoading(true);
-      console.log('API 호출 시작: /auth/login');
       const loginRes = await authAPI.login({ email, password });
-      console.log('로그인 성공:', loginRes.data);
       const token = loginRes.data.access_token;
 
       // 토큰을 먼저 저장 (이후 API 호출에 사용됨)
-      await setAuth(token, "");
+      await setAuth(token, "", email);
 
       // /auth/me로 닉네임 가져오기
-      console.log('API 호출 시작: /auth/me');
       const meRes = await authAPI.me();
-      console.log('사용자 정보 조회 성공:', meRes.data);
-      await setAuth(token, meRes.data.nickname);
+      await setAuth(token, meRes.data.nickname, email);
     } catch (err: any) {
-      console.error('❌ 로그인 에러:', err);
       const status = err.response?.status;
       if (status === 401) {
-        showAlert("로그인 실패", "이메일 또는 비밀번호가 올바르지 않습니다.");
+        Alert.alert("로그인 실패", "이메일 또는 비밀번호가 올바르지 않습니다.");
       } else {
-        showAlert("오류", "로그인 중 오류가 발생했습니다.");
+        Alert.alert("오류", "로그인 중 오류가 발생했습니다.");
       }
     } finally {
       setLoading(false);
@@ -110,7 +93,7 @@ export default function LoginScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="your@email.com"
-                placeholderTextColor={Colors.text.dusk}
+                placeholderTextColor="#555577"
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -125,7 +108,7 @@ export default function LoginScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="비밀번호를 입력하세요"
-                placeholderTextColor={Colors.text.dusk}
+                placeholderTextColor="#555577"
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
@@ -161,7 +144,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background.void,
+    backgroundColor: "#080714",
   },
   safeArea: {
     flex: 1,
@@ -178,12 +161,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 36,
     fontWeight: "700",
-    color: Colors.text.starlight,
+    color: "#FFFFFF",
     marginBottom: 10,
   },
   subtitle: {
     fontSize: 15,
-    color: Colors.text.moonmist,
+    color: "#AAAACC",
   },
   form: {
     gap: 28,
@@ -194,20 +177,20 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    color: Colors.text.moonmist,
+    color: "#AAAACC",
   },
   input: {
     fontSize: 16,
-    color: Colors.text.starlight,
+    color: "#FFFFFF",
     paddingVertical: 8,
     paddingHorizontal: 0,
   },
   inputLine: {
     height: 1,
-    backgroundColor: Colors.accent.orbit,
+    backgroundColor: "#333355",
   },
   button: {
-    backgroundColor: Colors.accent.pulsar,
+    backgroundColor: "#7B6FD4",
     borderRadius: 30,
     paddingVertical: 18,
     alignItems: "center",
@@ -217,7 +200,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   buttonText: {
-    color: Colors.text.starlight,
+    color: "#FFFFFF",
     fontSize: 17,
     fontWeight: "700",
   },
@@ -227,11 +210,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   linkText: {
-    color: Colors.text.moonmist,
+    color: "#AAAACC",
     fontSize: 14,
   },
   link: {
-    color: Colors.accent.aurora,
+    color: "#9B8FFF",
     fontSize: 14,
     fontWeight: "600",
   },

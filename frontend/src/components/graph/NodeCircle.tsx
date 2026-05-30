@@ -15,6 +15,7 @@ interface NodeCircleProps {
   is_root: boolean;
   step_order: number;
   isCurrentLeaf: boolean; // step_order가 최대값인 리프 노드 여부
+  isPending?: boolean; // pending 노드 여부 (기본값: false)
   onPress: (id: string) => void;
 }
 
@@ -24,12 +25,19 @@ const DOMAIN_ICONS: Record<'movie' | 'music' | 'book', string> = {
   book: '📖',
 };
 
+const DOMAIN_COLORS: Record<'movie' | 'music' | 'book', string> = {
+  movie: '#E05C6E',
+  book: '#5CA8E0',
+  music: '#7C5CE0',
+};
+
 export default function NodeCircle({
   id,
   title,
   domain,
   is_root,
   isCurrentLeaf,
+  isPending = false,
   onPress,
 }: NodeCircleProps) {
   const rotateAnim = useRef(new Animated.Value(0)).current;
@@ -52,11 +60,13 @@ export default function NodeCircle({
     outputRange: ['0deg', '360deg'],
   });
 
-  // 노드 크기 결정
-  const nodeSize = is_root || isCurrentLeaf ? 56 : 48;
+  // 노드 크기 결정 (pending 노드는 항상 48px)
+  const nodeSize = isPending ? 48 : (is_root || isCurrentLeaf ? 56 : 48);
 
   // 노드 스타일 결정
   const getNodeStyle = () => {
+    const domainColor = DOMAIN_COLORS[domain];
+
     if (is_root) {
       return {
         width: nodeSize,
@@ -75,6 +85,16 @@ export default function NodeCircle({
         backgroundColor: Colors.accent.nebulaRose,
       };
     }
+    // pending 노드: domain별 색상 (opacity는 MapCanvas에서 처리)
+    if (isPending) {
+      return {
+        width: nodeSize,
+        height: nodeSize,
+        borderRadius: nodeSize / 2,
+        backgroundColor: domainColor,
+      };
+    }
+    // confirmed 일반 노드: 기존 회색
     return {
       width: nodeSize,
       height: nodeSize,
