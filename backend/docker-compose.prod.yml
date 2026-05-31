@@ -9,6 +9,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      ai:
+        condition: service_started
     restart: unless-stopped
 
   db:
@@ -25,6 +27,15 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  ai:
+    build: ../Ai
+    container_name: molib_ai
+    ports:
+      - "8001:8000"
+    env_file:
+      - ../Ai/.env
     restart: unless-stopped
 
 volumes:
