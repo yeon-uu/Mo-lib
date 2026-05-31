@@ -36,7 +36,7 @@ module.exports = {
         projectId: "971922f5-efd0-45ff-804e-25bda1218787"
       },
       // 환경변수를 extra에 추가 (Constants.expoConfig.extra로 접근 가능)
-      apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL || "http://43.200.172.193:8000"
+      apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL || ""
     }
   }
 };

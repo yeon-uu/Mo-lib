@@ -7,7 +7,7 @@ import Constants from 'expo-constants';
 const BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
   Constants.expoConfig?.extra?.apiBaseUrl ||
-  'http://43.200.172.193:8000'; // fallback
+  '';
 
 // 디버깅: 환경변수 로드 확인
 console.log('🌐 [API Client Init] BASE_URL:', BASE_URL);
