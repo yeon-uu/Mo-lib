@@ -19,6 +19,31 @@ router = APIRouter(prefix="/recommendations", tags=["recommendation"])
 CACHE_TTL_HOURS = 24
 
 
+def normalize_metadata(domain: str, metadata: dict) -> dict:
+    """검색 API 응답(ContentItem)을 추천 API metadata 형식으로 변환"""
+    genre = metadata.get("genre", [])
+    genre_str = genre[0] if isinstance(genre, list) and genre else genre or ""
+
+    if domain == "film":
+        return {
+            "genre": genre_str,
+            "synopsis": metadata.get("description", ""),
+            "director": metadata.get("creator", ""),
+        }
+    elif domain == "book":
+        return {
+            "genre": genre_str,
+            "description": metadata.get("description", ""),
+            "author": metadata.get("creator", ""),
+        }
+    elif domain == "music":
+        return {
+            "genre": genre_str,
+            "artist": metadata.get("creator", ""),
+        }
+    return metadata
+
+
 def make_cache_key(content_id: str, domain: str, exclude_domains: list[str]) -> str:
     exclude_str = ",".join(sorted(exclude_domains))
     return f"{domain}:{content_id}:exclude:{exclude_str}"
@@ -55,7 +80,7 @@ async def get_recommendation(
         domain=request.domain,
         content_id=request.content_id,
         title=request.title,
-        metadata=request.metadata,
+        metadata=normalize_metadata(request.domain, request.metadata),
         history=request.history,
         exclude_domains=request.exclude_domains,
     )
