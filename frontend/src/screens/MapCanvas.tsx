@@ -24,11 +24,11 @@ import { Colors } from '../constants/colors';
 import EdgeLine from '../components/graph/EdgeLine';
 import NodeCircle from '../components/graph/NodeCircle';
 import NodeDetailSheet from '../components/common/NodeDetailSheet';
-import { calculateAllNodePositions, Node as LayoutNode, Edge as LayoutEdge } from '../utils/layoutUtils';
+import { calculateAllNodePositions, Edge as LayoutEdge } from '../utils/layoutUtils';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { Node, AIRecommendationItem } from '../types';
+import { Node, LocalNode, Edge, Domain, AIRecommendationItem, Map } from '../types';
 import { RootTabParamList, HomeStackParamList } from '../navigation/types';
-import { recommendationAPI, nodesAPI, edgesAPI } from '../api/endpoints';
+import { recommendationAPI, nodesAPI, edgesAPI, mapsAPI } from '../api/endpoints';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -39,168 +39,15 @@ type MapNavProp = CompositeNavigationProp<
   NativeStackNavigationProp<HomeStackParamList>
 >;
 
-// 타입 정의
-type DomainType = 'movie' | 'music' | 'book';
-type NodeStatus = 'confirmed' | 'pending';
-
-interface NodeData extends LayoutNode {
-  title: string;
-  domain: DomainType;
-  description: string;
-  emotion_tags: string[];
-  nodeStatus?: NodeStatus; // 노드 상태 (기본값: 'confirmed')
-  external_id?: string | null; // 외부 API ID (추천 노드에서 사용)
-  image_url?: string | null; // 이미지 URL
-  reason?: string | null; // 추천 이유 (pending 노드에서 사용)
-}
-
-
-// 목 데이터 (x, y 좌표 제거 - 레이아웃 알고리즘으로 자동 계산)
-const MOCK_NODES_RAW: NodeData[] = [
-  // Map 1: 명량 (node1-4)
-  {
-    id: 'node1',
-    map_id: 'map1',
-    title: '명량',
-    domain: 'movie' as const,
-    is_root: true,
-    step_order: 0,
-    description: '조선 최고의 전투',
-    emotion_tags: ['#웅장함'],
-  },
-  {
-    id: 'node2',
-    map_id: 'map1',
-    title: 'Norwegian Wood',
-    domain: 'music' as const,
-    is_root: false,
-    step_order: 1,
-    description: '비틀즈의 명곡',
-    emotion_tags: ['#몽환'],
-  },
-  {
-    id: 'node3',
-    map_id: 'map1',
-    title: '해변의 카프카',
-    domain: 'book' as const,
-    is_root: false,
-    step_order: 2,
-    description: '무라카미 하루키',
-    emotion_tags: ['#고독'],
-  },
-  {
-    id: 'node4',
-    map_id: 'map1',
-    title: '멜랑꼴리아',
-    domain: 'movie' as const,
-    is_root: false,
-    step_order: 3,
-    description: '현재 과몰입 중',
-    emotion_tags: ['#우울'],
-  },
-  // Map 2: Fly to the moon (node5-7)
-  {
-    id: 'node5',
-    map_id: 'map2',
-    title: 'Fly Me to the Moon',
-    domain: 'music' as const,
-    is_root: true,
-    step_order: 0,
-    description: '프랭크 시나트라',
-    emotion_tags: ['#로맨틱'],
-  },
-  {
-    id: 'node6',
-    map_id: 'map2',
-    title: 'La La Land',
-    domain: 'movie' as const,
-    is_root: false,
-    step_order: 1,
-    description: '꿈을 향한 도전',
-    emotion_tags: ['#감성'],
-  },
-  {
-    id: 'node7',
-    map_id: 'map2',
-    title: '달',
-    domain: 'book' as const,
-    is_root: false,
-    step_order: 2,
-    description: '파커 하비의 시집',
-    emotion_tags: ['#몽환'],
-  },
-  // Map 3: 프로젝트 헤일메리 (node8-10)
-  {
-    id: 'node8',
-    map_id: 'map3',
-    title: '프로젝트 헤일메리',
-    domain: 'book' as const,
-    is_root: true,
-    step_order: 0,
-    description: '앤디 위어의 SF 소설',
-    emotion_tags: ['#스릴'],
-  },
-  {
-    id: 'node9',
-    map_id: 'map3',
-    title: '인터스텔라',
-    domain: 'movie' as const,
-    is_root: false,
-    step_order: 1,
-    description: '우주를 향한 여정',
-    emotion_tags: ['#웅장함'],
-  },
-  {
-    id: 'node10',
-    map_id: 'map3',
-    title: 'Space Oddity',
-    domain: 'music' as const,
-    is_root: false,
-    step_order: 2,
-    description: '데이비드 보위',
-    emotion_tags: ['#고독'],
-  },
-];
-
-const MOCK_EDGES: LayoutEdge[] = [
-  // Map 1 edges
-  { id: 'e1', source_node_id: 'node1', target_node_id: 'node2' },
-  { id: 'e2', source_node_id: 'node2', target_node_id: 'node3' },
-  { id: 'e3', source_node_id: 'node3', target_node_id: 'node4' },
-  // Map 2 edges
-  { id: 'e4', source_node_id: 'node5', target_node_id: 'node6' },
-  { id: 'e5', source_node_id: 'node6', target_node_id: 'node7' },
-  // Map 3 edges
-  { id: 'e6', source_node_id: 'node8', target_node_id: 'node9' },
-  { id: 'e7', source_node_id: 'node9', target_node_id: 'node10' },
-];
-
-const MOCK_MAPS = [
-  { id: 'map1', title: '명량' },
-  { id: 'map2', title: 'Fly to the moon' },
-  { id: 'map3', title: '프로젝트 헤일메리' },
-];
 
 function MapCanvasContent() {
   const navigation = useNavigation<MapNavProp>();
   const route = useRoute<MapRouteProp>();
 
-  const MOCK_NODES = useMemo(() => {
-    try {
-      if (!MOCK_NODES_RAW || MOCK_NODES_RAW.length === 0) {
-        return [];
-      }
-
-      if (!MOCK_EDGES || MOCK_EDGES.length === 0) {
-        return MOCK_NODES_RAW.map(node => ({ ...node, x: 0, y: 0 }));
-      }
-
-      const positioned = calculateAllNodePositions(MOCK_NODES_RAW, MOCK_EDGES);
-      return positioned || [];
-    } catch (error) {
-      return [];
-    }
-  }, []);
+  // API 데이터 상태
+  const [mapList, setMapList] = useState<Map[]>([]);
+  const [currentMapData, setCurrentMapData] = useState<{ nodes: Node[]; edges: Edge[] } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // 별 배경 랜덤 생성
   const stars = useMemo(() => {
@@ -215,13 +62,13 @@ function MapCanvasContent() {
   }, []);
 
   // State
-  const [selectedMapId, setSelectedMapId] = useState<string>(MOCK_MAPS[MOCK_MAPS.length - 1]?.id || 'map1');
-  const [selectedNode, setSelectedNode] = useState<NodeData | null>(null);
+  const [selectedMapId, setSelectedMapId] = useState<string>('');
+  const [selectedNode, setSelectedNode] = useState<LocalNode | null>(null);
   const [isSheetVisible, setIsSheetVisible] = useState(false);
   const [mapLoadError, setMapLoadError] = useState<string | null>(null);
 
   // 추천 관련 상태
-  const [pendingNodes, setPendingNodes] = useState<NodeData[]>([]); // 임시 추천 노드 목록
+  const [pendingNodes, setPendingNodes] = useState<LocalNode[]>([]); // 임시 추천 노드 목록
   const [pendingEdges, setPendingEdges] = useState<LayoutEdge[]>([]); // 임시 엣지 목록
   const [isRecommending, setIsRecommending] = useState(false); // 추천 API 호출 중
   const [sourceNodeForRecommendation, setSourceNodeForRecommendation] = useState<string | null>(null); // 추천 기준 노드 ID
@@ -234,6 +81,34 @@ function MapCanvasContent() {
   const savedScale = useSharedValue(1);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
+
+  // API 호출 함수
+  const loadMapList = async () => {
+    try {
+      setIsLoading(true);
+      const res = await mapsAPI.getList();
+      const maps = res.data.maps || [];
+      setMapList(maps);
+
+      if (maps.length > 0) {
+        const lastMapId = maps[maps.length - 1].id;
+        setSelectedMapId(lastMapId); // useEffect가 loadMapDetail 호출
+      }
+    } catch (err: any) {
+      Alert.alert('오류', err.message || '지도 목록을 불러올 수 없습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadMapDetail = async (mapId: string) => {
+    try {
+      const res = await mapsAPI.getDetail(mapId);
+      setCurrentMapData(res.data);
+    } catch (err: any) {
+      setMapLoadError(`지도를 불러올 수 없습니다 (ID: ${mapId})`);
+    }
+  };
 
   // 팬 제스처
   const panGesture = Gesture.Pan()
@@ -276,34 +151,57 @@ function MapCanvasContent() {
     ],
   }));
 
-  const selectedMapNodes = useMemo(() => {
-    try {
-      if (!MOCK_NODES || !Array.isArray(MOCK_NODES) || MOCK_NODES.length === 0) {
-        return [];
-      }
-      const confirmedNodes = MOCK_NODES.filter((node) => node?.map_id === selectedMapId);
-      const allNodes = [...confirmedNodes, ...pendingNodes];
-      return allNodes;
-    } catch (error) {
-      return [];
+  // 컴포넌트 마운트 시 맵 목록 로드
+  useEffect(() => {
+    loadMapList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // selectedMapId 변경 시 맵 상세 데이터 로드
+  useEffect(() => {
+    if (selectedMapId) {
+      loadMapDetail(selectedMapId);
     }
-  }, [selectedMapId, MOCK_NODES, pendingNodes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMapId]);
+
+  const selectedMapNodes = useMemo(() => {
+    if (!currentMapData) return [];
+
+    const { nodes, edges } = currentMapData;
+
+    // 1. is_archived === false인 confirmed 노드만 필터링
+    const confirmedNodes = nodes.filter(n => n.map_id === selectedMapId && !n.is_archived);
+
+    // 2. Node → LocalNode 변환 (nodeStatus: 'confirmed' 주입)
+    const localConfirmedNodes: LocalNode[] = confirmedNodes.map(node => ({
+      ...node,
+      nodeStatus: 'confirmed' as const,
+    }));
+
+    // 3. 레이아웃 계산 (layoutUtils.calculateAllNodePositions)
+    const positioned = calculateAllNodePositions(localConfirmedNodes, edges) as LocalNode[];
+
+    // 4. pending 노드 추가
+    return [...positioned, ...pendingNodes];
+  }, [selectedMapId, currentMapData, pendingNodes]);
 
   const selectedMapEdges = useMemo(() => {
-    try {
-      if (!selectedMapNodes || selectedMapNodes.length === 0) {
-        return [];
-      }
-      const nodeIds = new Set(selectedMapNodes.map((n) => n?.id).filter(Boolean));
-      const confirmedEdges = MOCK_EDGES.filter(
-        (edge) => edge && nodeIds.has(edge.source_node_id) && nodeIds.has(edge.target_node_id)
-      );
-      const allEdges = [...confirmedEdges, ...pendingEdges];
-      return allEdges;
-    } catch (error) {
+    if (!currentMapData || !selectedMapNodes || selectedMapNodes.length === 0) {
       return [];
     }
-  }, [selectedMapNodes, pendingEdges]);
+
+    const { edges } = currentMapData;
+    const nodeIds = new Set(selectedMapNodes.map((n) => n.id));
+
+    // confirmed 엣지 필터링 (양쪽 노드가 모두 존재하는 엣지만)
+    const confirmedEdges = edges.filter(
+      (edge) => nodeIds.has(edge.source_node_id) && nodeIds.has(edge.target_node_id)
+    );
+
+    // pending 엣지 추가
+    return [...confirmedEdges, ...pendingEdges];
+  }, [currentMapData, selectedMapNodes, pendingEdges]);
 
   // 선택된 맵의 최대 step_order 계산
   const maxStepInMap = useMemo(() => {
@@ -313,11 +211,22 @@ function MapCanvasContent() {
 
   // 클러스터 중심점 계산 (바운딩 박스의 중심)
   const getMapClusterCenter = (mapId: string) => {
-    const mapNodes = MOCK_NODES.filter((node) => node.map_id === mapId);
+    if (!currentMapData) return { x: 0, y: 0 };
+
+    const { nodes, edges } = currentMapData;
+    const mapNodes = nodes.filter(n => n.map_id === mapId && !n.is_archived);
+
     if (mapNodes.length === 0) return { x: 0, y: 0 };
 
-    const xs = mapNodes.map((n) => n.x);
-    const ys = mapNodes.map((n) => n.y);
+    // 레이아웃 계산
+    const localNodes: LocalNode[] = mapNodes.map(node => ({
+      ...node,
+      nodeStatus: 'confirmed' as const,
+    }));
+    const positioned = calculateAllNodePositions(localNodes, edges);
+
+    const xs = positioned.map((n) => n.x!);
+    const ys = positioned.map((n) => n.y!);
 
     const minX = Math.min(...xs);
     const maxX = Math.max(...xs);
@@ -337,7 +246,7 @@ function MapCanvasContent() {
 
     if (incomingMapId) {
       // 해당 mapId가 존재하는지 확인
-      const mapExists = MOCK_MAPS.find(m => m.id === incomingMapId);
+      const mapExists = mapList.find(m => m.id === incomingMapId);
       if (mapExists) {
         setSelectedMapId(incomingMapId);
         // 해당 맵의 중심으로 포커스 이동
@@ -359,8 +268,8 @@ function MapCanvasContent() {
       const leafNode = selectedMapNodes.find((n) => n.step_order === maxStep);
 
       if (leafNode) {
-        const centerX = SCREEN_WIDTH / 2 - leafNode.x;
-        const centerY = SCREEN_HEIGHT / 2 - leafNode.y;
+        const centerX = SCREEN_WIDTH / 2 - (leafNode.x || 0);
+        const centerY = SCREEN_HEIGHT / 2 - (leafNode.y || 0);
         translateX.value = centerX;
         translateY.value = centerY;
       }
@@ -398,7 +307,7 @@ function MapCanvasContent() {
     // confirmed 노드와 pending 노드 모두에서 검색
     const node = selectedMapNodes.find((n) => n.id === id);
     if (node) {
-      setSelectedNode(node as NodeData);
+      setSelectedNode(node);
       setIsSheetVisible(true);
     }
   };
@@ -479,7 +388,7 @@ function MapCanvasContent() {
       ];
 
       // 기존 confirmed 노드들만 가져오기 (pending 노드 제외)
-      const confirmedNodesOnly = MOCK_NODES.filter((node) => node?.map_id === selectedMapId);
+      const confirmedNodesOnly = selectedMapNodes.filter(n => n.nodeStatus === 'confirmed');
 
       // 충돌 방지: 기존 노드와 겹치면 y값 추가로 내리기 (최대 3회 재시도)
       const pendingPositions = initialPositions.map(pos => {
@@ -495,21 +404,24 @@ function MapCanvasContent() {
         return { x: pos.x, y: adjustedY };
       });
 
-      const newPendingNodes: NodeData[] = topRecommendations.map((rec, index: number) => ({
+      const newPendingNodes: LocalNode[] = topRecommendations.map((rec, index: number) => ({
         id: `pending-${nodeId}-${index}`,
         map_id: selectedMapId,
         title: rec.title,
-        domain: rec.domain as DomainType,
-        description: rec.reason, // description 대신 reason 사용
-        emotion_tags: rec.tags || [], // emotion_tags → tags로 변경
+        domain: rec.domain as Domain,
+        description: rec.reason,
+        emotion_tags: rec.tags || [],
         is_root: false,
+        is_archived: false,
         step_order: selectedNode.step_order + 1,
+        metadata: {},
+        created_at: new Date().toISOString(),
         x: pendingPositions[index].x,
         y: pendingPositions[index].y,
         nodeStatus: 'pending',
-        external_id: null, // AIRecommendationItem에는 external_id 없음
-        image_url: null, // AIRecommendationItem에는 image_url 없음
-        reason: rec.connection_keyword, // connection_keyword를 reason으로 저장
+        external_id: null,
+        image_url: null,
+        reason: rec.connection_keyword,
       }));
 
       // 4. pending 엣지 생성 (source = 선택한 노드, target = 각 pending 노드)
@@ -572,14 +484,12 @@ function MapCanvasContent() {
         reason: pendingNode.reason || null, // connection_keyword를 reason으로 전달
       });
 
-      // 3. pending 노드를 confirmed로 전환
-      setPendingNodes(prev =>
-        prev.map(node =>
-          node.id === pendingNode.id
-            ? { ...node, nodeStatus: 'confirmed' as NodeStatus }
-            : node
-        )
-      );
+      // 3. pending 노드 목록에서 제거
+      setPendingNodes(prev => prev.filter(n => n.id !== pendingNode.id));
+      setPendingEdges(prev => prev.filter(e => e.target_node_id !== pendingNode.id));
+
+      // 4. 맵 상세 데이터 리로드
+      await loadMapDetail(selectedMapId);
     } catch (err: any) {
       Alert.alert(
         '추가 오류',
@@ -631,7 +541,7 @@ function MapCanvasContent() {
   }
 
   // 로딩 상태 체크
-  if (!MOCK_NODES || MOCK_NODES.length === 0) {
+  if (isLoading) {
     return (
       <View style={[styles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color={Colors.accent.nebulaRose} />
@@ -760,7 +670,7 @@ function MapCanvasContent() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.pillScrollContent}
           >
-            {MOCK_MAPS.map((map) => (
+            {mapList.map((map) => (
               <TouchableOpacity
                 key={map.id}
                 style={[
