@@ -68,7 +68,7 @@ export interface RecommendationRequest {
   content_id: string;
   title: string;
   domain: Domain;
-  metadata?: Record<string, unknown>;
+  metadata: Record<string, unknown>; // 백엔드 required 필드
   history?: unknown[];
   exclude_domains?: string[];
 }
