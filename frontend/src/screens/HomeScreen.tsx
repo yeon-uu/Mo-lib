@@ -17,7 +17,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { HomeStackParamList, RootTabParamList } from "../navigation/types";
 import { Map as MapItem } from "../types";
-import { mapsAPI } from "../api/endpoints";
+import { mapsAPI, usersAPI } from "../api/endpoints";
 import Header from "../components/common/Header";
 
 type NavProp = NativeStackNavigationProp<HomeStackParamList, "HomeMain">;
@@ -53,8 +53,7 @@ export default function HomeScreen() {
   const [selectedDomain, setSelectedDomain] = useState<Domain>("movie");
   const [searchText, setSearchText] = useState("");
 
-  // TODO: API 연동 후 실제 값으로 교체 (GET /api/users/me/stats)
-  const [stats] = useState<Stats>({
+  const [stats, setStats] = useState<Stats>({
     totalArchived: 0,
     totalMaps: 0,
     weeklyNodes: 0,
@@ -81,11 +80,25 @@ export default function HomeScreen() {
     }
   }, []);
 
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await usersAPI.getStats();
+      setStats({
+        totalArchived: res.data.total_archived,
+        totalMaps: res.data.total_maps,
+        weeklyNodes: res.data.weekly_nodes,
+      });
+    } catch {
+      // 실패 시 기존 값 유지
+    }
+  }, []);
+
   // 화면 포커스될 때마다 최신 데이터 로드
   useFocusEffect(
     useCallback(() => {
       fetchRecentMaps();
-    }, [fetchRecentMaps])
+      fetchStats();
+    }, [fetchRecentMaps, fetchStats])
   );
 
   const handleMapCardPress = (mapId: string) => {
@@ -196,9 +209,9 @@ export default function HomeScreen() {
                 </Text>
               </View>
             }
-            renderItem={({ item, index }) => (
+            renderItem={({ item }) => (
               <TouchableOpacity
-                style={[styles.mapCard, index === 0 && styles.mapCardLarge]}
+                style={[styles.mapCard, styles.mapCardLarge]}
                 onPress={() => handleMapCardPress(item.id)}
               >
                 {item.last_node?.image_url ? (

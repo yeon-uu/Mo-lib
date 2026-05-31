@@ -283,9 +283,23 @@ function MapCanvasContent() {
       scale.value = 1;
       return;
     } else {
-      // mapId가 유효하지 않은 경우 에러 표시
-      console.log('[RouteParams] 지도를 찾을 수 없음. mapList:', JSON.stringify(mapList.map(m => m.id)));
-      setMapLoadError(`지도를 찾을 수 없습니다 (ID: ${incomingMapId})`);
+      // 목록에 없으면 새로 생성된 지도일 수 있으므로 목록 재조회 후 선택
+      console.log('[RouteParams] mapList에 없음, 목록 재조회 후 선택');
+      mapsAPI.getList()
+        .then((res) => {
+          const maps = res.data.maps || [];
+          setMapList(maps);
+          const found = maps.find((m: { id: string }) => m.id === incomingMapId);
+          if (found) {
+            setSelectedMapId(incomingMapId);
+            setMapLoadError(null);
+          } else {
+            setMapLoadError(`지도를 찾을 수 없습니다 (ID: ${incomingMapId})`);
+          }
+        })
+        .catch(() => {
+          setMapLoadError(`지도를 찾을 수 없습니다 (ID: ${incomingMapId})`);
+        });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.params?.mapId, mapList]); // mapList 추가
@@ -338,8 +352,8 @@ function MapCanvasContent() {
     const nodeId = selectedNode.id;
     const nodeTitle = selectedNode.title;
     const nodeDomain = selectedNode.domain;
-    // external_id가 있으면 사용, 없으면 nodeId를 임시로 사용
-    const contentId = selectedNode.external_id || nodeId; // TODO: external_id가 null인 경우 백엔드 처리 확인 필요
+    const nodeMetadata = selectedNode.metadata || {};
+    const contentId = selectedNode.external_id || nodeId;
 
     // Sheet 닫기
     setIsSheetVisible(false);
@@ -351,12 +365,9 @@ function MapCanvasContent() {
 
     try {
       // 1. 추천 API 호출
-      const res = await recommendationAPI.get({
-        content_id: contentId,
-        title: nodeTitle,
-        domain: nodeDomain,
-        metadata: {}, // 백엔드 required 필드 (빈 객체라도 전송 필요)
-      });
+      const reqBody = { content_id: contentId, title: nodeTitle, domain: nodeDomain, metadata: nodeMetadata };
+      console.log('[추천 요청]', JSON.stringify(reqBody));
+      const res = await recommendationAPI.get(reqBody);
 
       const recommendationsObj = res.data.recommendations || {};
 
