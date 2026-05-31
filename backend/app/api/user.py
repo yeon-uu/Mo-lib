@@ -15,8 +15,8 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 def _monday_of_this_week() -> datetime:
-    """현재 주의 월요일 00:00:00 (UTC) 반환."""
-    now = datetime.now(timezone.utc)
+    """현재 주의 월요일 00:00:00 (naive UTC) 반환."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     monday = now.replace(hour=0, minute=0, second=0, microsecond=0)
     monday -= timedelta(days=now.weekday())
     return monday
