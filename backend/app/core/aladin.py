@@ -32,7 +32,8 @@ class AladinClient:
                 )
                 response.raise_for_status()
                 data = response.json()
-                return data.get("item", [])
+                items = data.get("item", [])
+                return [i for i in items if "[세트]" not in i.get("title", "")]
             except httpx.HTTPError as e:
                 logger.error(f"Aladin API 호출 실패: {str(e)}")
                 raise e
