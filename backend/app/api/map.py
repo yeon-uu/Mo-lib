@@ -174,8 +174,7 @@ async def get_maps(
     for m in maps:
         node_result = await db.execute(
             select(Node)
-            .where(Node.map_id == m.id)
-            .order_by(Node.step_order.desc())
+            .where(Node.map_id == m.id, Node.is_root == True)  # noqa: E712
             .limit(1)
         )
         last_node = node_result.scalar_one_or_none()
