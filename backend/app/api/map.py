@@ -86,11 +86,19 @@ class EdgeResponse(BaseModel):
         from_attributes = True
 
 
+class LastNodeInfo(BaseModel):
+    id: str
+    title: str
+    domain: str
+    image_url: Optional[str]
+
+
 class MapResponse(BaseModel):
     id: str
     title: str
     created_at: str
     updated_at: str
+    last_node: Optional[LastNodeInfo] = None
 
     class Config:
         from_attributes = True
@@ -162,15 +170,32 @@ async def get_maps(
     )
     maps = result.scalars().all()
 
-    return [
-        MapResponse(
-            id=str(m.id),
-            title=m.title,
-            created_at=str(m.created_at),
-            updated_at=str(m.updated_at),
+    responses = []
+    for m in maps:
+        node_result = await db.execute(
+            select(Node)
+            .where(Node.map_id == m.id)
+            .order_by(Node.step_order.desc())
+            .limit(1)
         )
-        for m in maps
-    ]
+        last_node = node_result.scalar_one_or_none()
+        responses.append(
+            MapResponse(
+                id=str(m.id),
+                title=m.title,
+                created_at=str(m.created_at),
+                updated_at=str(m.updated_at),
+                last_node=LastNodeInfo(
+                    id=str(last_node.id),
+                    title=last_node.title,
+                    domain=last_node.domain,
+                    image_url=last_node.image_url,
+                )
+                if last_node
+                else None,
+            )
+        )
+    return responses
 
 
 @router.get(
