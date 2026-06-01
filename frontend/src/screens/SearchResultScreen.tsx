@@ -193,8 +193,8 @@ export default function SearchResultScreen() {
         // SearchResponse → ContentItem[] 매핑
         const mapped: ContentItem[] = res.data.results.map((item: SearchContentItem) => ({
           // TODO: 백엔드 검색 API에 external_id 추가되면 item.external_id로 교체
-          external_id: item.title,
-          domain: item.domain as Domain,
+          external_id: item.external_id || item.title,
+          domain: ((item.domain === 'film' ? 'movie' : item.domain) as Domain),
           title: item.title,
           description: item.description,
           image_url: item.thumbnail_url?.[0] || null,

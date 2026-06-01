@@ -344,7 +344,14 @@ function MapCanvasContent() {
 
     try {
       // 1. 추천 API 호출
-      const reqBody = { content_id: contentId, title: nodeTitle, domain: nodeDomain, metadata: nodeMetadata };
+      const reqBody = {
+        domain: nodeDomain,
+        content_id: contentId,
+        title: nodeTitle,
+        metadata: nodeMetadata,
+        history: [],
+        exclude_domains: [],
+      };
       console.log('[추천 요청]', JSON.stringify(reqBody));
       const res = await recommendationAPI.get(reqBody);
 
