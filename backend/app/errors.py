@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.core.exceptions import MolibException
+
 
 class AppError(Exception):
     """공통 앱 예외 베이스."""
@@ -33,6 +35,13 @@ class NotFoundError(AppError):
 
 def register_error_handlers(app: FastAPI) -> None:
     """글로벌 에러 핸들러 등록."""
+
+    @app.exception_handler(MolibException)
+    async def molib_error_handler(_request: Request, exc: MolibException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.message},
+        )
 
     @app.exception_handler(AppError)
     async def app_error_handler(_request: Request, exc: AppError):
