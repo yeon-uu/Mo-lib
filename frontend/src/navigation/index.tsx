@@ -2,6 +2,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useEffect } from 'react';
+import { Image, View } from 'react-native';
 
 import { useAuthStore } from '../store/authStore';
 import OnboardingScreen from '../screens/OnboardingScreen';
@@ -13,6 +14,41 @@ import ArchiveScreen from '../screens/ArchiveScreen';
 
 const AuthStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+
+const TAB_ICONS = {
+  Home: {
+    default: require('../../assets/icon-home.png'),
+    active: require('../../assets/icon-home(choice).png'),
+  },
+  Map: {
+    default: require('../../assets/icon-journey.png'),
+    active: require('../../assets/icon-journey(choice).png'),
+  },
+  Archive: {
+    default: require('../../assets/icon-archive.png'),
+    active: require('../../assets/icon-archive(choice).png'),
+  },
+};
+
+function TabIcon({ name, focused }: { name: keyof typeof TAB_ICONS; focused: boolean }) {
+  const icons = TAB_ICONS[name];
+  return (
+    <View style={{
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: focused ? 'rgba(192, 132, 160, 0.25)' : 'transparent',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}>
+      <Image
+        source={focused ? icons.active : icons.default}
+        style={{ width: 24, height: 24 }}
+        resizeMode="contain"
+      />
+    </View>
+  );
+}
 
 function AuthNavigator() {
   return (
@@ -26,10 +62,48 @@ function AuthNavigator() {
 
 function MainTab() {
   return (
-    <Tab.Navigator screenOptions={{ headerShown: false }}>
-      <Tab.Screen name="Home" component={HomeStack} options={{ title: '홈' }} />
-      <Tab.Screen name="Map" component={MapCanvas} options={{ title: '지도' }} />
-      <Tab.Screen name="Archive" component={ArchiveScreen} options={{ title: '아카이브' }} />
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: '#1E293B',
+          borderTopWidth: 0,
+          height: 64,
+          paddingBottom: 8,
+          paddingTop: 8,
+        },
+        tabBarActiveTintColor: '#C084A0',
+        tabBarInactiveTintColor: '#6B7A99',
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+        },
+      }}
+    >
+      <Tab.Screen
+        name="Home"
+        component={HomeStack}
+        options={{
+          title: '홈',
+          tabBarIcon: ({ focused }) => <TabIcon name="Home" focused={focused} />,
+        }}
+      />
+      <Tab.Screen
+        name="Map"
+        component={MapCanvas}
+        options={{
+          title: '지도',
+          tabBarIcon: ({ focused }) => <TabIcon name="Map" focused={focused} />,
+        }}
+      />
+      <Tab.Screen
+        name="Archive"
+        component={ArchiveScreen}
+        options={{
+          title: '아카이브',
+          tabBarIcon: ({ focused }) => <TabIcon name="Archive" focused={focused} />,
+        }}
+      />
     </Tab.Navigator>
   );
 }

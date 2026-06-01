@@ -10,6 +10,12 @@ import {
   EdgeSaveRequest,
 } from '../types';
 
+// ── Users ─────────────────────────────────────────────────────────────────────
+export const usersAPI = {
+  getStats: () =>
+    apiClient.get<{ total_archived: number; total_maps: number; weekly_nodes: number }>('/users/me/stats'),
+};
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const authAPI = {
   register: (data: { email: string; password: string; nickname: string }) =>
