@@ -36,6 +36,23 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CANVAS_WIDTH = 2000;
 const CANVAS_HEIGHT = 2000;
 
+// 우주 뷰 - 맵 클러스터 배치 상수
+const CANVAS_CX = CANVAS_WIDTH / 2;   // 1000
+const CANVAS_CY = CANVAS_HEIGHT / 2;  // 1000
+
+// 황금각(137.5°) 기반 나선 배치 → 정렬 없이 자연스럽게 흩어진 느낌
+const GOLDEN_ANGLE = 2.39996; // 2π / φ²
+
+function getClusterCenter(index: number, total: number): { x: number; y: number } {
+  if (total <= 1) return { x: CANVAS_CX, y: CANVAS_CY };
+  const radius = 220 + 160 * Math.sqrt(index + 1); // index 커질수록 더 멀리
+  const angle = index * GOLDEN_ANGLE;
+  return {
+    x: CANVAS_CX + radius * Math.cos(angle),
+    y: CANVAS_CY + radius * Math.sin(angle),
+  };
+}
+
 // 네비게이션 타입
 type MapRouteProp = RouteProp<RootTabParamList, 'Map'>;
 type MapNavProp = CompositeNavigationProp<
@@ -50,7 +67,7 @@ function MapCanvasContent() {
 
   // API 데이터 상태
   const [mapList, setMapList] = useState<Map[]>([]);
-  const [currentMapData, setCurrentMapData] = useState<{ nodes: Node[]; edges: Edge[] } | null>(null);
+  const [allMapsData, setAllMapsData] = useState<Record<string, { nodes: Node[]; edges: Edge[] }>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   // 별 배경 랜덤 생성
@@ -91,16 +108,25 @@ function MapCanvasContent() {
     try {
       setIsLoading(true);
       const res = await mapsAPI.getList();
-      console.log('[MapList] res:', JSON.stringify(res.data));
-      const maps = res.data.maps || [];
+      const maps: Map[] = res.data.maps || [];
       setMapList(maps);
 
       if (maps.length > 0) {
-        const lastMapId = maps[maps.length - 1].id;
-        setSelectedMapId(lastMapId); // useEffect가 loadMapDetail 호출
+        setSelectedMapId(maps[maps.length - 1].id);
       }
+
+      // 모든 맵 상세 병렬 로드 → 우주 뷰
+      const results = await Promise.all(
+        maps.map((m: Map) =>
+          mapsAPI.getDetail(m.id)
+            .then(r => ({ id: m.id, data: r.data }))
+            .catch(() => null)
+        )
+      );
+      const newData: Record<string, { nodes: Node[]; edges: Edge[] }> = {};
+      results.forEach(r => { if (r) newData[r.id] = { nodes: r.data.nodes, edges: r.data.edges }; });
+      setAllMapsData(newData);
     } catch (err: any) {
-      console.log('[MapList] error:', err.message, err);
       Alert.alert('오류', err.message || '지도 목록을 불러올 수 없습니다.');
     } finally {
       setIsLoading(false);
@@ -109,12 +135,9 @@ function MapCanvasContent() {
 
   const loadMapDetail = async (mapId: string) => {
     try {
-      console.log('[MapDetail] 지도 상세 조회 시작, mapId:', mapId);
       const res = await mapsAPI.getDetail(mapId);
-      console.log('[MapDetail] 지도 상세 조회 성공:', JSON.stringify(res.data));
-      setCurrentMapData(res.data);
+      setAllMapsData(prev => ({ ...prev, [mapId]: { nodes: res.data.nodes, edges: res.data.edges } }));
     } catch (err: any) {
-      console.log('[MapDetail] 지도 상세 조회 실패, mapId:', mapId, 'error:', err.message, err);
       setMapLoadError(`지도를 불러올 수 없습니다 (ID: ${mapId})`);
     }
   };
@@ -130,8 +153,8 @@ function MapCanvasContent() {
       savedTranslateY.value = translateY.value;
     })
     .onUpdate((event) => {
-      const maxX = SCREEN_WIDTH * scale.value;
-      const maxY = SCREEN_HEIGHT * scale.value;
+      const maxX = CANVAS_WIDTH;
+      const maxY = CANVAS_HEIGHT;
       translateX.value = Math.max(-maxX, Math.min(maxX, savedTranslateX.value + event.translationX));
       translateY.value = Math.max(-maxY, Math.min(maxY, savedTranslateY.value + event.translationY));
     });
@@ -180,48 +203,61 @@ function MapCanvasContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMapId]);
 
+  // selectedMapId 변경 시 클러스터 중앙으로 포커스
+  useEffect(() => {
+    if (!selectedMapId) return;
+    const idx = mapList.findIndex(m => m.id === selectedMapId);
+    if (idx === -1) return;
+    const center = getClusterCenter(idx, mapList.length);
+    translateX.value = withSpring(SCREEN_WIDTH / 2 - center.x, { damping: 20, stiffness: 90 });
+    translateY.value = withSpring(SCREEN_HEIGHT / 2 - center.y, { damping: 20, stiffness: 90 });
+    scale.value = withSpring(1, { damping: 20, stiffness: 90 });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMapId, mapList.length]);
+
+  // 모든 맵 노드를 클러스터 위치로 배치한 결과
+  const allPositionedNodes = useMemo((): LocalNode[] => {
+    if (mapList.length === 0) return [];
+    return mapList.flatMap((map, index) => {
+      const mapData = allMapsData[map.id];
+      if (!mapData) return [];
+      const confirmed = mapData.nodes.filter((n: Node) => n.map_id === map.id && !n.is_archived);
+      if (confirmed.length === 0) return [];
+      const local: LocalNode[] = confirmed.map((n: Node) => ({ ...n, nodeStatus: 'confirmed' as const }));
+      const positioned = calculateAllNodePositions(local, mapData.edges) as LocalNode[];
+      const root = positioned.find(n => n.is_root);
+      const rx = root?.x ?? 0;
+      const ry = root?.y ?? 0;
+      const center = getClusterCenter(index, mapList.length);
+      return positioned.map(n => ({ ...n, x: center.x + (n.x! - rx), y: center.y + (n.y! - ry) }));
+    });
+  }, [mapList, allMapsData]);
+
+  const allPositionedEdges = useMemo((): LayoutEdge[] => {
+    const nodeIds = new Set(allPositionedNodes.map(n => n.id));
+    return mapList.flatMap(map => {
+      const mapData = allMapsData[map.id];
+      if (!mapData) return [];
+      return (mapData.edges as LayoutEdge[]).filter(
+        (e: LayoutEdge) => nodeIds.has(e.source_node_id) && nodeIds.has(e.target_node_id)
+      );
+    });
+  }, [mapList, allMapsData, allPositionedNodes]);
+
+  // 선택된 맵 노드 (추천/여정 추가 등 조작용)
   const selectedMapNodes = useMemo(() => {
-    if (!currentMapData) return [];
-
-    const { nodes, edges } = currentMapData;
-    console.log('[selectedMapNodes] currentMapData.nodes:', nodes.length, 'edges:', edges.length);
-
-    // 1. is_archived === false인 confirmed 노드만 필터링
-    const confirmedNodes = nodes.filter(n => n.map_id === selectedMapId && !n.is_archived);
-    console.log('[selectedMapNodes] confirmedNodes:', confirmedNodes.length, 'selectedMapId:', selectedMapId);
-
-    // 2. Node → LocalNode 변환 (nodeStatus: 'confirmed' 주입)
-    const localConfirmedNodes: LocalNode[] = confirmedNodes.map(node => ({
-      ...node,
-      nodeStatus: 'confirmed' as const,
-    }));
-
-    // 3. 레이아웃 계산 (layoutUtils.calculateAllNodePositions)
-    const positioned = calculateAllNodePositions(localConfirmedNodes, edges) as LocalNode[];
-    console.log('[selectedMapNodes] positioned:', positioned.length, positioned.map(n => ({ id: n.id, x: n.x, y: n.y })));
-
-    // 4. pending 노드 추가
-    const result = [...positioned, ...pendingNodes];
-    console.log('[selectedMapNodes] final result:', result.length);
-    return result;
-  }, [selectedMapId, currentMapData, pendingNodes]);
+    return [...allPositionedNodes.filter(n => n.map_id === selectedMapId), ...pendingNodes];
+  }, [allPositionedNodes, selectedMapId, pendingNodes]);
 
   const selectedMapEdges = useMemo(() => {
-    if (!currentMapData || !selectedMapNodes || selectedMapNodes.length === 0) {
-      return [];
-    }
-
-    const { edges } = currentMapData;
-    const nodeIds = new Set(selectedMapNodes.map((n) => n.id));
-
-    // confirmed 엣지 필터링 (양쪽 노드가 모두 존재하는 엣지만)
-    const confirmedEdges = edges.filter(
-      (edge) => nodeIds.has(edge.source_node_id) && nodeIds.has(edge.target_node_id)
+    const mapData = allMapsData[selectedMapId];
+    if (!mapData) return pendingEdges;
+    const nodeIds = new Set(selectedMapNodes.map(n => n.id));
+    const confirmed = (mapData.edges as LayoutEdge[]).filter(
+      (e: LayoutEdge) => nodeIds.has(e.source_node_id) && nodeIds.has(e.target_node_id)
     );
-
-    // pending 엣지 추가
-    return [...confirmedEdges, ...pendingEdges];
-  }, [currentMapData, selectedMapNodes, pendingEdges]);
+    return [...confirmed, ...pendingEdges];
+  }, [allMapsData, selectedMapId, selectedMapNodes, pendingEdges]);
 
   // 선택된 맵의 최대 step_order 계산
   const maxStepInMap = useMemo(() => {
@@ -230,61 +266,17 @@ function MapCanvasContent() {
   }, [selectedMapNodes]);
 
   // 클러스터 중심점 계산 (바운딩 박스의 중심)
-  const getMapClusterCenter = (mapId: string) => {
-    if (!currentMapData) return { x: 0, y: 0 };
-
-    const { nodes, edges } = currentMapData;
-    const mapNodes = nodes.filter(n => n.map_id === mapId && !n.is_archived);
-
-    if (mapNodes.length === 0) return { x: 0, y: 0 };
-
-    // 레이아웃 계산
-    const localNodes: LocalNode[] = mapNodes.map(node => ({
-      ...node,
-      nodeStatus: 'confirmed' as const,
-    }));
-    const positioned = calculateAllNodePositions(localNodes, edges);
-
-    const xs = positioned.map((n) => n.x!);
-    const ys = positioned.map((n) => n.y!);
-
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
-
-    return {
-      x: (minX + maxX) / 2,
-      y: (minY + maxY) / 2,
-    };
-  };
-
   // route params에서 mapId 수신 처리
   useEffect(() => {
     const incomingMapId = route.params?.mapId;
-
-    console.log('[RouteParams] incomingMapId:', incomingMapId, 'mapList.length:', mapList.length);
-
     if (!incomingMapId) return;
-    if (mapList.length === 0) return; // mapList 로드 전이면 대기
+    if (mapList.length === 0) return;
 
-    // 해당 mapId가 존재하는지 확인
     const mapExists = mapList.find(m => m.id === incomingMapId);
-    console.log('[RouteParams] mapExists:', mapExists ? 'YES' : 'NO');
     if (mapExists) {
       setSelectedMapId(incomingMapId);
-      setMapLoadError(null); // 에러 초기화
-      // 해당 맵의 중심으로 포커스 이동
-      const center = getMapClusterCenter(incomingMapId);
-      const centerX = SCREEN_WIDTH / 2 - center.x;
-      const centerY = SCREEN_HEIGHT / 2 - center.y;
-      translateX.value = centerX;
-      translateY.value = centerY;
-      scale.value = 1;
-      return;
+      setMapLoadError(null);
     } else {
-      // 목록에 없으면 새로 생성된 지도일 수 있으므로 목록 재조회 후 선택
-      console.log('[RouteParams] mapList에 없음, 목록 재조회 후 선택');
       mapsAPI.getList()
         .then((res) => {
           const maps = res.data.maps || [];
@@ -293,6 +285,7 @@ function MapCanvasContent() {
           if (found) {
             setSelectedMapId(incomingMapId);
             setMapLoadError(null);
+            loadMapDetail(incomingMapId);
           } else {
             setMapLoadError(`지도를 찾을 수 없습니다 (ID: ${incomingMapId})`);
           }
@@ -302,31 +295,17 @@ function MapCanvasContent() {
         });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route.params?.mapId, mapList]); // mapList 추가
+  }, [route.params?.mapId, mapList]);
 
-  // pill 탭 시 포커스 이동
+  // pill 탭 시 해당 클러스터로 fly
   const handlePillPress = (mapId: string) => {
     setSelectedMapId(mapId);
-
-    // 해당 맵의 클러스터 중심으로 이동
-    const center = getMapClusterCenter(mapId);
-    const centerX = SCREEN_WIDTH / 2 - center.x;
-    const centerY = SCREEN_HEIGHT / 2 - center.y;
-
-    translateX.value = withSpring(centerX, {
-      damping: 20,
-      stiffness: 90,
-    });
-    translateY.value = withSpring(centerY, {
-      damping: 20,
-      stiffness: 90,
-    });
-
-    // 줌 레벨도 적절하게 조정 (선택 사항)
-    scale.value = withSpring(1, {
-      damping: 20,
-      stiffness: 90,
-    });
+    const idx = mapList.findIndex(m => m.id === mapId);
+    if (idx === -1) return;
+    const center = getClusterCenter(idx, mapList.length);
+    translateX.value = withSpring(SCREEN_WIDTH / 2 - center.x, { damping: 20, stiffness: 90 });
+    translateY.value = withSpring(SCREEN_HEIGHT / 2 - center.y, { damping: 20, stiffness: 90 });
+    scale.value = withSpring(1, { damping: 20, stiffness: 90 });
   };
 
   // 노드 클릭 핸들러 - NodeDetailSheet 열기
@@ -549,7 +528,7 @@ function MapCanvasContent() {
 
   const getNodeById = (id: string) => {
     try {
-      return selectedMapNodes?.find((n) => n?.id === id);
+      return [...allPositionedNodes, ...pendingNodes].find((n) => n?.id === id);
     } catch (error) {
       return undefined;
     }
@@ -575,11 +554,11 @@ function MapCanvasContent() {
     );
   }
 
-  // 선택된 맵에 노드가 없는 경우
-  if (!selectedMapNodes || selectedMapNodes.length === 0) {
+  // 노드가 없는 경우
+  if (allPositionedNodes.length === 0 && Object.keys(allMapsData).length > 0) {
     return (
       <View style={[styles.container, styles.centerContent]}>
-        <Text style={styles.emptyText}>선택된 지도에 노드가 없습니다.</Text>
+        <Text style={styles.emptyText}>지도에 노드가 없습니다.</Text>
       </View>
     );
   }
@@ -612,10 +591,10 @@ function MapCanvasContent() {
               <Svg
                 width={CANVAS_WIDTH}
                 height={CANVAS_HEIGHT}
-                viewBox={`${-CANVAS_WIDTH / 2} ${-CANVAS_HEIGHT / 2} ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
+                viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
                 style={styles.svgLayer}
               >
-                {selectedMapEdges?.map((edge) => {
+                {[...allPositionedEdges, ...pendingEdges].map((edge) => {
                   try {
                     const source = getNodeById(edge?.source_node_id);
                     const target = getNodeById(edge?.target_node_id);
@@ -637,7 +616,7 @@ function MapCanvasContent() {
                 })}
               </Svg>
 
-              {selectedMapNodes?.map((node) => {
+              {[...allPositionedNodes, ...pendingNodes].map((node) => {
                 try {
                   if (!node || node.x === undefined || node.y === undefined) {
                     console.log('[Render] Skipping node - undefined x or y:', node?.id);
