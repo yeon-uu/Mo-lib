@@ -46,7 +46,7 @@ def normalize_spotify_track(item: dict) -> ContentItem:
     artists = [a["name"] for a in item.get("artists", [])]
 
     images = item.get("album", {}).get("images", [])
-    thumbnail_list = [img["url"] for img in images] if images else []
+    thumbnail_list = [images[0]["url"]] if images else []
     return ContentItem(
         domain="music",
         external_id=item.get("id", ""),
@@ -75,7 +75,7 @@ def normalize_aladin_book(item: dict) -> ContentItem:
         else []
     )
 
-    cover = item.get("cover", "")
+    cover = item.get("cover", "").replace("coversum", "cover500")
     thumbnail_list = [cover] if cover else []
 
     return ContentItem(
@@ -105,7 +105,7 @@ def normalize_tmdb_movie(item: dict) -> ContentItem:
     )
 
     return ContentItem(
-        domain="film",
+        domain="movie",
         external_id=str(item.get("id", "")),
         title=item.get("title", ""),
         description=item.get("overview", ""),
