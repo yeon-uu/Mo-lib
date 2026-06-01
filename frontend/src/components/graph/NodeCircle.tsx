@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
+  Image,
   TouchableOpacity,
   StyleSheet,
   Animated,
@@ -19,10 +20,10 @@ interface NodeCircleProps {
   onPress: (id: string) => void;
 }
 
-const DOMAIN_ICONS: Record<'movie' | 'music' | 'book', string> = {
-  movie: '▶',
-  music: '♪',
-  book: '📖',
+const DOMAIN_ICON_IMAGES = {
+  movie: require('../../../assets/icon-movie(journey).png'),
+  music: require('../../../assets/icon-music(journey).png'),
+  book: require('../../../assets/icon-book(journey).png'),
 };
 
 const DOMAIN_COLORS: Record<'movie' | 'music' | 'book', string> = {
@@ -40,7 +41,8 @@ export default function NodeCircle({
   isPending = false,
   onPress,
 }: NodeCircleProps) {
-  console.log('[NodeCircle] render', id, title, 'is_root:', is_root, 'isPending:', isPending);
+  // 백엔드가 "film"을 반환하는 경우 "movie"로 정규화
+  const normalizedDomain = ((domain as string) === 'film' ? 'movie' : domain) as 'movie' | 'music' | 'book';
   const rotateAnim = useRef(new Animated.Value(0)).current;
 
   // 루트 노드 회전 애니메이션
@@ -66,7 +68,7 @@ export default function NodeCircle({
 
   // 노드 스타일 결정
   const getNodeStyle = () => {
-    const domainColor = DOMAIN_COLORS[domain];
+    const domainColor = DOMAIN_COLORS[normalizedDomain];
 
     if (is_root) {
       return {
@@ -169,7 +171,11 @@ export default function NodeCircle({
 
         {/* 노드 본체 */}
         <View style={[styles.node, getNodeStyle()]}>
-          <Text style={styles.icon}>{DOMAIN_ICONS[domain]}</Text>
+          <Image
+            source={DOMAIN_ICON_IMAGES[normalizedDomain]}
+            style={[styles.icon, { tintColor: '#FFFFFF' }]}
+            resizeMode="contain"
+          />
         </View>
       </View>
 
@@ -208,8 +214,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   icon: {
-    fontSize: 18,
-    color: Colors.text.starlight,
+    width: 20,
+    height: 20,
   },
   rotatingRing: {
     position: 'absolute',

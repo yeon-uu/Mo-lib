@@ -96,6 +96,7 @@ export interface SearchContentItem {
   creator: string;
   keywords: string[];
   thumbnail_url: string[];
+  external_id?: string | null;
 }
 
 export interface SearchResponse {
