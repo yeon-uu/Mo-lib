@@ -75,6 +75,9 @@ def normalize_aladin_book(item: dict) -> ContentItem:
         else []
     )
 
+    cover = item.get("cover", "")
+    thumbnail_list = [cover] if cover else []
+
     return ContentItem(
         domain="book",
         external_id=str(item.get("itemId", "")),
@@ -83,6 +86,7 @@ def normalize_aladin_book(item: dict) -> ContentItem:
         genre=genre,
         creator=creator,
         keywords=[],
+        thumbnail_url=thumbnail_list,
     )
 
 
@@ -95,6 +99,11 @@ def normalize_tmdb_movie(item: dict) -> ContentItem:
     genre_ids: list[int] = item.get("genre_ids", [])
     genre = [_TMDB_GENRE_MAP[gid] for gid in genre_ids if gid in _TMDB_GENRE_MAP]
 
+    poster_path = item.get("poster_path", "")
+    thumbnail_list = (
+        [f"https://image.tmdb.org/t/p/w500{poster_path}"] if poster_path else []
+    )
+
     return ContentItem(
         domain="film",
         external_id=str(item.get("id", "")),
@@ -103,4 +112,5 @@ def normalize_tmdb_movie(item: dict) -> ContentItem:
         genre=genre,
         creator="",
         keywords=[],
+        thumbnail_url=thumbnail_list,
     )
