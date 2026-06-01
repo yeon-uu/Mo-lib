@@ -12,7 +12,7 @@ class Node(Base):
     __tablename__ = "nodes"
     __table_args__ = (
         CheckConstraint(
-            "domain IN ('film', 'music', 'book')",
+            "domain IN ('movie', 'music', 'book')",
             name="ck_nodes_domain",
         ),
     )

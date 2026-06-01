@@ -105,7 +105,7 @@ def normalize_tmdb_movie(item: dict) -> ContentItem:
     )
 
     return ContentItem(
-        domain="film",
+        domain="movie",
         external_id=str(item.get("id", "")),
         title=item.get("title", ""),
         description=item.get("overview", ""),
