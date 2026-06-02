@@ -46,7 +46,7 @@ class HistoryItem(BaseModel):
 
 class AIRecommendationRequest(BaseModel):
     schema_version: str = "1.0"
-    domain: str  # film / book / music
+    domain: str  # movie / book / music
     content_id: str
     title: str
     metadata: dict
@@ -63,7 +63,8 @@ class AIRecommendationItem(BaseModel):
     title: str
     reason: str
     tags: list[str]
-    connection_keyword: str  # 노드 간 연결 키워드 (한 단어)
+    connection_keyword: str
+    image_url: Optional[str] = None
 
 
 class AIRecommendationResponse(BaseModel):
