@@ -509,11 +509,34 @@ function MapCanvasContent() {
     }
 
     const confirmedOnly = selectedMapNodes.filter(n => n.nodeStatus === 'confirmed');
+
+    // 나선형 탐색으로 겹치지 않는 위치 찾기
+    const findFreePosition = (
+      preferredX: number,
+      preferredY: number,
+      occupied: Array<{ x?: number; y?: number }>
+    ): { x: number; y: number } => {
+      if (!isOverlapping(preferredX, preferredY, occupied)) {
+        return { x: preferredX, y: preferredY };
+      }
+      for (let r = NODE_SPACING / 2; r <= NODE_SPACING * 10; r += NODE_SPACING / 2) {
+        for (let deg = 0; deg < 360; deg += 45) {
+          const rad = (deg * Math.PI) / 180;
+          const x = preferredX + r * Math.cos(rad);
+          const y = preferredY + r * Math.sin(rad);
+          if (!isOverlapping(x, y, occupied)) return { x, y };
+        }
+      }
+      return { x: preferredX, y: preferredY + NODE_SPACING * 10 };
+    };
+
+    // 이미 배치된 pending 노드도 occupied에 포함시켜 서로 겹치지 않게 배치
+    const placedPositions: Array<{ x: number; y: number }> = [];
     const pendingPositions = initialPositions.map(pos => {
-      let y = pos.y;
-      let retries = 0;
-      while (retries < 10 && isOverlapping(pos.x, y, confirmedOnly)) { y += NODE_SPACING; retries++; }
-      return { x: pos.x, y };
+      const occupied = [...confirmedOnly, ...placedPositions];
+      const finalPos = findFreePosition(pos.x, pos.y, occupied);
+      placedPositions.push(finalPos);
+      return finalPos;
     });
 
     const newPendingNodes: LocalNode[] = topRecommendations.map((rec, index) => ({
