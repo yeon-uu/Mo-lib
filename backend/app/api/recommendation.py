@@ -23,7 +23,7 @@ router = APIRouter(prefix="/recommendations", tags=["recommendation"])
 CACHE_TTL_HOURS = 24
 
 
-def normalize_metadata(domain: str, metadata: dict, emotion_tags: list[str] | None = None) -> dict:
+def normalize_metadata(domain: str, metadata: dict) -> dict:
     """검색 API 응답(ContentItem)을 추천 API metadata 형식으로 변환"""
     genre = metadata.get("genre", [])
     genre_str = genre[0] if isinstance(genre, list) and genre else genre or ""
@@ -44,7 +44,6 @@ def normalize_metadata(domain: str, metadata: dict, emotion_tags: list[str] | No
         return {
             "genre": genre_str,
             "artist": metadata.get("creator", ""),
-            "mood_tags": emotion_tags or [],  # Spotify는 장르 미제공 → emotion_tags로 보완
         }
     return metadata
 
@@ -106,7 +105,7 @@ async def get_recommendation(
         domain=request.domain,
         content_id=request.content_id,
         title=request.title,
-        metadata=normalize_metadata(request.domain, request.metadata, request.emotion_tags),
+        metadata=normalize_metadata(request.domain, request.metadata),
         history=request.history,
         exclude_domains=request.exclude_domains,
     )
