@@ -18,10 +18,7 @@ import Animated, {
   useDerivedValue,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { CompositeNavigationProp } from '@react-navigation/native';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useRoute, RouteProp } from '@react-navigation/native';
 import { Colors } from '../constants/colors';
 import EdgeLine from '../components/graph/EdgeLine';
 import NodeCircle from '../components/graph/NodeCircle';
@@ -29,7 +26,7 @@ import NodeDetailSheet from '../components/common/NodeDetailSheet';
 import { calculateAllNodePositions, Edge as LayoutEdge } from '../utils/layoutUtils';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { Node, LocalNode, Edge, Domain, AIRecommendationItem, Map } from '../types';
-import { RootTabParamList, HomeStackParamList } from '../navigation/types';
+import { RootTabParamList } from '../navigation/types';
 import { recommendationAPI, nodesAPI, edgesAPI, mapsAPI } from '../api/endpoints';
 import { useMapPendingStore } from '../store/mapPendingStore';
 
@@ -67,13 +64,8 @@ function getClusterCenter(index: number, total: number): { x: number; y: number 
 
 // 네비게이션 타입
 type MapRouteProp = RouteProp<RootTabParamList, 'Map'>;
-type MapNavProp = CompositeNavigationProp<
-  BottomTabNavigationProp<RootTabParamList, 'Map'>,
-  NativeStackNavigationProp<HomeStackParamList>
->;
 
 function MapCanvasContent() {
-  const navigation = useNavigation<MapNavProp>();
   const route = useRoute<MapRouteProp>();
   const { setIsPendingMode: setGlobalPendingMode, registerClearHandler } = useMapPendingStore();
 
@@ -94,6 +86,8 @@ function MapCanvasContent() {
   const [isRecommending, setIsRecommending] = useState(false); // 추천 API 호출 중
   const [sourceNodeForRecommendation, setSourceNodeForRecommendation] = useState<string | null>(null); // 추천 기준 노드 ID
   const [isPendingMode, setIsPendingMode] = useState(false); // 임시노드 확인 모드
+  const [recsCache, setRecsCache] = useState<Record<string, AIRecommendationItem[]> | null>(null); // API 응답 전체 캐시
+  const [recsOffset, setRecsOffset] = useState(0); // 현재 표시 중인 추천 인덱스
 
   // 별 배경 랜덤 생성 (개선: 더 많은 별, 다양한 크기와 투명도)
   const stars = useMemo(() => {
@@ -166,6 +160,8 @@ function MapCanvasContent() {
     setPendingEdges([]);
     setIsPendingMode(false);
     setSourceNodeForRecommendation(null);
+    setRecsCache(null);
+    setRecsOffset(0);
   }, []);
 
   // 공통 경고 함수: pending 모드에서 차단된 동작 시도 시
@@ -448,21 +444,124 @@ function MapCanvasContent() {
     setSelectedNode(null);
   };
 
-  // [과몰입 계속하기] 핸들러 - confirmed 노드에서 추천 받기
-  const handleContinueObsession = async () => {
-    if (!selectedNode || selectedNode.nodeStatus === 'pending') return;
+  type HistoryItem = {
+    step: number;
+    domain: string;
+    title: string;
+    context_keywords: string[];
+    connection_keyword?: string;
+  };
 
-    const nodeId = selectedNode.id;
-    const nodeTitle = selectedNode.title;
-    const nodeDomain = selectedNode.domain;
-    const nodeMetadata = selectedNode.metadata || {};
-    const contentId = selectedNode.external_id || nodeId;
+  // 캐시된 추천 결과에서 offset 위치의 3개를 pending 노드로 빌드
+  const buildPendingFromRecs = (
+    recommendationsObj: Record<string, AIRecommendationItem[]>,
+    offset: number,
+    sourceNode: LocalNode
+  ) => {
+    const nodeId = sourceNode.id;
+    const domainKeys = Object.keys(recommendationsObj);
+    const topRecommendations: Array<AIRecommendationItem & { domain: string }> = [];
 
-    // Sheet 닫기
-    setIsSheetVisible(false);
-    setSelectedNode(null);
+    for (let i = offset; topRecommendations.length < 3 && i < offset + 10; i++) {
+      for (const domain of domainKeys) {
+        if (topRecommendations.length >= 3) break;
+        const items = recommendationsObj[domain] as AIRecommendationItem[];
+        if (items && items[i]) {
+          topRecommendations.push({ ...items[i], domain });
+        }
+      }
+    }
 
-    // 로딩 시작
+    if (topRecommendations.length === 0) return false;
+
+    const sourceX = sourceNode.x!;
+    const sourceY = sourceNode.y!;
+    const NODE_SPACING = 200;
+    const COLLISION_RADIUS = 100;
+
+    const isOverlapping = (x: number, y: number, nodes: Array<{ x?: number; y?: number }>): boolean =>
+      nodes.some(n => {
+        if (n.x === undefined || n.y === undefined) return false;
+        return Math.sqrt(Math.pow(n.x - x, 2) + Math.pow(n.y - y, 2)) < COLLISION_RADIUS;
+      });
+
+    const childNodeIds = selectedMapEdges
+      .filter(e => e.source_node_id === nodeId)
+      .map(e => e.target_node_id);
+    const existingChildren = selectedMapNodes.filter(
+      n => childNodeIds.includes(n.id) && n.nodeStatus === 'confirmed'
+    );
+
+    let initialPositions: Array<{ x: number; y: number }>;
+    if (existingChildren.length > 0) {
+      const ec = existingChildren.length;
+      const startX = sourceX - ((ec + 2) * NODE_SPACING) / 2;
+      initialPositions = [0, 1, 2].map(i => ({
+        x: startX + (ec + i) * NODE_SPACING,
+        y: sourceY + NODE_SPACING,
+      }));
+    } else {
+      initialPositions = [
+        { x: sourceX - NODE_SPACING, y: sourceY + NODE_SPACING },
+        { x: sourceX,                y: sourceY + NODE_SPACING },
+        { x: sourceX + NODE_SPACING, y: sourceY + NODE_SPACING },
+      ];
+    }
+
+    const confirmedOnly = selectedMapNodes.filter(n => n.nodeStatus === 'confirmed');
+    const pendingPositions = initialPositions.map(pos => {
+      let y = pos.y;
+      let retries = 0;
+      while (retries < 10 && isOverlapping(pos.x, y, confirmedOnly)) { y += NODE_SPACING; retries++; }
+      return { x: pos.x, y };
+    });
+
+    const newPendingNodes: LocalNode[] = topRecommendations.map((rec, index) => ({
+      id: `pending-${nodeId}-${offset}-${index}`,
+      map_id: selectedMapId,
+      title: rec.title,
+      domain: rec.domain as Domain,
+      description: rec.reason,
+      emotion_tags: rec.tags || [],
+      is_root: false,
+      is_archived: false,
+      step_order: sourceNode.step_order + 1,
+      metadata: {},
+      created_at: new Date().toISOString(),
+      x: pendingPositions[index].x,
+      y: pendingPositions[index].y,
+      nodeStatus: 'pending',
+      external_id: null,
+      image_url: rec.image_url || null,
+      reason: rec.connection_keyword,
+    }));
+
+    const newPendingEdges: LayoutEdge[] = newPendingNodes.map(node => ({
+      id: `edge-${nodeId}-${node.id}`,
+      source_node_id: nodeId,
+      target_node_id: node.id,
+    }));
+
+    setPendingNodes(newPendingNodes);
+    setPendingEdges(newPendingEdges);
+    setIsPendingMode(true);
+    return true;
+  };
+
+  // 추천 API 호출 및 pending 노드 생성 (공통 로직)
+  const fetchRecommendations = async (sourceNodeId: string, history: HistoryItem[] = []) => {
+    const sourceNode = selectedMapNodes.find(n => n.id === sourceNodeId && n.nodeStatus === 'confirmed');
+    if (!sourceNode || sourceNode.x === undefined || sourceNode.y === undefined) {
+      Alert.alert('오류', '기준 노드를 찾을 수 없습니다.');
+      return;
+    }
+
+    const nodeId = sourceNode.id;
+    const nodeDomain = sourceNode.domain;
+    const nodeTitle = sourceNode.title;
+    const nodeMetadata = sourceNode.metadata || {};
+    const contentId = sourceNode.external_id || nodeId;
+
     setIsRecommending(true);
     setSourceNodeForRecommendation(nodeId);
 
@@ -473,7 +572,7 @@ function MapCanvasContent() {
         content_id: contentId,
         title: nodeTitle,
         metadata: nodeMetadata,
-        history: [],
+        history: history,
         exclude_domains: [],
       };
       console.log('[추천 요청]', JSON.stringify(reqBody));
@@ -483,128 +582,11 @@ function MapCanvasContent() {
 
       const recommendationsObj = res.data.recommendations || {};
 
-      // 2. 각 도메인에서 1개씩 round-robin으로 선택 (최대 3개)
-      const domainKeys = Object.keys(recommendationsObj);
-      const topRecommendations: Array<AIRecommendationItem & { domain: string }> = [];
+      // 2. 전체 응답 캐시 저장, offset 초기화
+      setRecsCache(recommendationsObj);
+      setRecsOffset(0);
 
-      // 각 도메인에서 1개씩 선택 (최대 3개)
-      for (let i = 0; topRecommendations.length < 3 && i < 10; i++) {
-        for (const domain of domainKeys) {
-          if (topRecommendations.length >= 3) break;
-          const items = recommendationsObj[domain] as AIRecommendationItem[];
-          if (items && items[i]) {
-            topRecommendations.push({ ...items[i], domain });
-          }
-        }
-      }
-
-      // [DEBUG] image_url 확인
-      console.log('[추천 image_url 확인]', topRecommendations.map(r => ({ title: r.title, image_url: r.image_url })));
-
-      // 3. pending 노드 생성
-      // 기준 노드(source)의 좌표 가져오기 - selectedMapNodes(layoutNodes)에서 찾기
-      const sourceNode = selectedMapNodes.find(n => n.id === nodeId);
-      if (!sourceNode || sourceNode.x === undefined || sourceNode.y === undefined) {
-        throw new Error('기준 노드의 좌표를 찾을 수 없습니다.');
-      }
-
-      const sourceX = sourceNode.x;
-      const sourceY = sourceNode.y;
-      const NODE_SPACING = 200; // 노드 간 간격 (기존 150 → 200으로 확대)
-      const COLLISION_RADIUS = 100; // 충돌 감지 반경 (80 → 100으로 증가)
-
-      // 충돌 감지 함수: 주어진 좌표가 기존 노드와 겹치는지 확인
-      const isOverlapping = (x: number, y: number, existingNodes: Array<{ x?: number; y?: number }>, radius: number = COLLISION_RADIUS): boolean => {
-        return existingNodes.some(node => {
-          if (node.x === undefined || node.y === undefined) return false;
-          const distance = Math.sqrt(Math.pow(node.x - x, 2) + Math.pow(node.y - y, 2));
-          return distance < radius;
-        });
-      };
-
-      // [수정] 같은 부모의 기존 자식 노드들 찾기
-      const childEdges = selectedMapEdges.filter(
-        e => e.source_node_id === nodeId
-      );
-      const childNodeIds = childEdges.map(e => e.target_node_id);
-      const existingChildren = selectedMapNodes.filter(
-        n => childNodeIds.includes(n.id) && n.nodeStatus === 'confirmed'
-      );
-
-      console.log('[추천] 기존 자식 노드:', existingChildren.length, '개');
-
-      // [수정] pending 노드 초기 위치 계산
-      let initialPositions: Array<{ x: number; y: number }>;
-
-      if (existingChildren.length > 0) {
-        // 기존 자식이 있는 경우: 기존 자식들과 함께 균등 배치
-        const existingCount = existingChildren.length;
-        const totalCount = existingCount + 3; // 기존 자식 + 새 pending 3개
-        const totalWidth = (totalCount - 1) * NODE_SPACING;
-        const startX = sourceX - totalWidth / 2;
-
-        // 새 pending 노드는 기존 자식 다음 위치부터 배치
-        initialPositions = [0, 1, 2].map(i => ({
-          x: startX + (existingCount + i) * NODE_SPACING,
-          y: sourceY + NODE_SPACING,
-        }));
-      } else {
-        // 기존 자식이 없는 경우: 기존 로직 유지 (좌/중/우)
-        initialPositions = [
-          { x: sourceX - NODE_SPACING, y: sourceY + NODE_SPACING }, // 왼쪽
-          { x: sourceX, y: sourceY + NODE_SPACING },                // 중앙
-          { x: sourceX + NODE_SPACING, y: sourceY + NODE_SPACING }, // 오른쪽
-        ];
-      }
-
-      // 기존 confirmed 노드들만 가져오기 (pending 노드 제외)
-      const confirmedNodesOnly = selectedMapNodes.filter(n => n.nodeStatus === 'confirmed');
-
-      // [수정] 충돌 방지: 기존 노드와 겹치면 y값 추가로 내리기 (재시도 10회로 증가)
-      const pendingPositions = initialPositions.map(pos => {
-        let adjustedY = pos.y;
-        let retries = 0;
-        const maxRetries = 10; // 3 → 10으로 증가
-
-        while (retries < maxRetries && isOverlapping(pos.x, adjustedY, confirmedNodesOnly)) {
-          adjustedY += NODE_SPACING;
-          retries++;
-        }
-
-        return { x: pos.x, y: adjustedY };
-      });
-
-      const newPendingNodes: LocalNode[] = topRecommendations.map((rec, index: number) => ({
-        id: `pending-${nodeId}-${index}`,
-        map_id: selectedMapId,
-        title: rec.title,
-        domain: rec.domain as Domain,
-        description: rec.reason,
-        emotion_tags: rec.tags || [],
-        is_root: false,
-        is_archived: false,
-        step_order: selectedNode.step_order + 1,
-        metadata: {},
-        created_at: new Date().toISOString(),
-        x: pendingPositions[index].x,
-        y: pendingPositions[index].y,
-        nodeStatus: 'pending',
-        external_id: null,
-        image_url: rec.image_url || null,
-        reason: rec.connection_keyword,
-      }));
-
-      // 4. pending 엣지 생성 (source = 선택한 노드, target = 각 pending 노드)
-      const newPendingEdges: LayoutEdge[] = newPendingNodes.map((node) => ({
-        id: `edge-${nodeId}-${node.id}`,
-        source_node_id: nodeId,
-        target_node_id: node.id,
-      }));
-
-      // 5. 상태 업데이트
-      setPendingNodes(newPendingNodes);
-      setPendingEdges(newPendingEdges);
-      setIsPendingMode(true);
+      buildPendingFromRecs(recommendationsObj, 0, sourceNode);
     } catch (err: any) {
       Alert.alert(
         '추천 오류',
@@ -613,6 +595,43 @@ function MapCanvasContent() {
     } finally {
       setIsRecommending(false);
     }
+  };
+
+  // [과몰입 계속하기] 핸들러 - confirmed 노드에서 추천 받기
+  const handleContinueObsession = async () => {
+    if (!selectedNode || selectedNode.nodeStatus === 'pending') return;
+    setIsSheetVisible(false);
+    setSelectedNode(null);
+    await fetchRecommendations(selectedNode.id);
+  };
+
+  // [새로고침] 핸들러 - 캐시에서 다음 인덱스 표시, 소진 시 새 API 호출
+  const handleRefreshRecommendations = async () => {
+    if (!sourceNodeForRecommendation || isRecommending) return;
+
+    const nextOffset = recsOffset + 1;
+    const sourceNode = selectedMapNodes.find(
+      n => n.id === sourceNodeForRecommendation && n.nodeStatus === 'confirmed'
+    );
+
+    // 캐시에 다음 항목이 있으면 API 호출 없이 표시
+    if (recsCache && sourceNode) {
+      const hasMore = Object.values(recsCache).some(items => items[nextOffset]);
+      if (hasMore) {
+        setPendingNodes([]);
+        setPendingEdges([]);
+        setRecsOffset(nextOffset);
+        buildPendingFromRecs(recsCache, nextOffset, sourceNode);
+        return;
+      }
+    }
+
+    // 캐시 소진 시 API 재호출
+    setPendingNodes([]);
+    setPendingEdges([]);
+    setRecsCache(null);
+    setRecsOffset(0);
+    await fetchRecommendations(sourceNodeForRecommendation);
   };
 
   // [여정에 추가] 핸들러 - pending 노드를 confirmed로 전환
@@ -915,11 +934,16 @@ function MapCanvasContent() {
           </ScrollView>
         </View>
 
-        {/* [완료] 버튼 - isPendingMode일 때만 표시 */}
+        {/* pending 모드 버튼 */}
         {isPendingMode && (
-          <TouchableOpacity style={styles.completeButton} onPress={handleComplete}>
-            <Text style={styles.completeButtonText}>완료</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity style={styles.refreshButton} onPress={handleRefreshRecommendations}>
+              <Text style={styles.refreshButtonText}>↺</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.completeButton} onPress={handleComplete}>
+              <Text style={styles.completeButtonText}>완료</Text>
+            </TouchableOpacity>
+          </>
         )}
 
         {/* 추천 로딩 오버레이 */}
@@ -1075,6 +1099,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   // [완료] 버튼
+  refreshButton: {
+    position: 'absolute',
+    top: 60,
+    right: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.background.input,
+    borderWidth: 1,
+    borderColor: Colors.accent.nebulaRose,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.ui.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  refreshButtonText: {
+    fontSize: 20,
+    color: Colors.accent.nebulaRose,
+    fontWeight: '700',
+  },
   completeButton: {
     position: 'absolute',
     bottom: 80,
