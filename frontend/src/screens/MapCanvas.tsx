@@ -597,6 +597,7 @@ function MapCanvasContent() {
         metadata: nodeMetadata,
         history: history,
         exclude_domains: [],
+        emotion_tags: sourceNode.emotion_tags || [],
       };
       console.log('[추천 요청]', JSON.stringify(reqBody));
       const res = await recommendationAPI.get(reqBody);

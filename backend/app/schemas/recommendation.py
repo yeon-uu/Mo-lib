@@ -16,6 +16,7 @@ class RecommendationRequest(BaseModel):
     metadata: dict
     history: list[HistoryItem] = []
     exclude_domains: list[str] = []
+    emotion_tags: list[str] = []  # 노드의 감성 태그 → AI mood_tags로 활용
 
 
 # ─────────────────────────────────────────
