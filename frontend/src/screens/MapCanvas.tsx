@@ -595,6 +595,7 @@ function MapCanvasContent() {
         content_id: contentId,
         title: nodeTitle,
         metadata: nodeMetadata,
+        emotion_tags: sourceNode.emotion_tags || [],
         history: history,
         exclude_domains: [],
       };
