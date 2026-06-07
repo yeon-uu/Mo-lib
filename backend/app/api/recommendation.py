@@ -137,6 +137,7 @@ async def get_recommendation(
         for domain, items in ai_response.recommendations.items()
         for item in items
     ]
+
     def get_creator(domain: str, item) -> str | None:
         if domain == "movie":
             return item.director
