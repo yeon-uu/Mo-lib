@@ -70,7 +70,8 @@ async def fetch_image_url(
                 item = normalize_tmdb_movie(results[0])
                 return item.thumbnail_url[0] if item.thumbnail_url else None
         elif domain == "book":
-            book_query = f"{base_query} {creator}" if creator else base_query
+            # 알라딘은 한국 서점이므로 한국어 title로 검색
+            book_query = f"{title} {creator}" if creator else title
             results = await aladin_client.search_books(query=book_query, limit=1)
             if results:
                 item = normalize_aladin_book(results[0])
