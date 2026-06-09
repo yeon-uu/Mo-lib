@@ -46,6 +46,9 @@ def parse_ai_response(raw: dict) -> AIRecommendationResponse:
             recommendations[domain] = [
                 AIRecommendationItem(
                     title=item["title"],
+                    original_title=item.get("original_title"),
+                    author=item.get("author"),
+                    artist=item.get("artist"),
                     reason=item["reason"],
                     tags=item["tags"],
                     connection_keyword=item["connection_keyword"],
