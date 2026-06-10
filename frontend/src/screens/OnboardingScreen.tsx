@@ -79,9 +79,11 @@ function Slide2() {
 function Slide3({ onStart }: { onStart: () => void }) {
   return (
     <View style={styles.slide}>
-      <View style={styles.imagePlaceholder}>
-        <Text style={styles.imagePlaceholderText}>Image</Text>
-      </View>
+      <Image
+        source={require("../../assets/onboarding_image.png")}
+        style={styles.onboardingImage}
+        resizeMode="cover"
+      />
       <View style={styles.slide3TextContainer}>
         <Text style={styles.slide3SubTitle}>과몰입의</Text>
         <Text style={styles.slide3Title}>순간들</Text>
@@ -246,20 +248,12 @@ const styles = StyleSheet.create({
   },
 
   // 슬라이드 3
-  imagePlaceholder: {
+  onboardingImage: {
     width: "100%",
     height: 240,
-    backgroundColor: Colors.accent.subtle,
     borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
     marginBottom: 32,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-  },
-  imagePlaceholderText: {
-    color: Colors.text.dusk,
-    fontSize: 18,
+    opacity: 0.75,
   },
   slide3TextContainer: {
     marginBottom: 40,
