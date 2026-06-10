@@ -41,8 +41,12 @@ function Slide1() {
           <Text style={[styles.slide1Text, { color: Colors.text.starlight }]}>
             당신만의
           </Text>
-          <Text style={[styles.slide1Text, { color: Colors.accent.pulsar }]}>취향을</Text>
-          <Text style={[styles.slide1Text, { color: Colors.accent.nebulaRose }]}>
+          <Text style={[styles.slide1Text, { color: Colors.accent.pulsar }]}>
+            취향을
+          </Text>
+          <Text
+            style={[styles.slide1Text, { color: Colors.accent.nebulaRose }]}
+          >
             발견하세요
           </Text>
         </View>
@@ -128,11 +132,11 @@ export default function OnboardingScreen() {
       resizeMode="cover"
     >
       {/* 건너뛰기 */}
-      <SafeAreaView style={styles.skipContainer}>
+      <View style={styles.skipContainer}>
         <TouchableOpacity onPress={goToLogin}>
           <Text style={styles.skipText}>건너뛰기</Text>
         </TouchableOpacity>
-      </SafeAreaView>
+      </View>
 
       {/* 슬라이드 */}
       <FlatList
@@ -172,11 +176,9 @@ const styles = StyleSheet.create({
   },
   skipContainer: {
     position: "absolute",
-    top: 0,
-    right: 0,
+    top: 75,
+    right: 24,
     zIndex: 10,
-    paddingTop: 60,
-    paddingRight: 24,
   },
   skipText: {
     color: Colors.text.moonmist,
