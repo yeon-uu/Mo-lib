@@ -23,7 +23,8 @@ module.exports = {
         monochromeImage: "./assets/android-icon-monochrome.png"
       },
       predictiveBackGestureEnabled: false,
-      package: "com.taennny.molib"
+      package: "com.taennny.molib",
+      usesCleartextTraffic: true
     },
     web: {
       favicon: "./assets/favicon.png"
