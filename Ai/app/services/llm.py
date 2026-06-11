@@ -16,41 +16,26 @@ def trim_history(history: list) -> list:
     if len(history) <= MAX_HISTORY_ITEMS:
         return history
     return [history[0]] + history[-(MAX_HISTORY_ITEMS - 1):]
-
-
+    
 def call_with_grounding_fallback(contents: list) -> tuple[object, bool]:
-    config_with = types.GenerateContentConfig(
-        tools=[GOOGLE_SEARCH_TOOL],
-        system_instruction=STAGE2_SYSTEM_PROMPT,
-        temperature=0.3,
-    )
     config_without = types.GenerateContentConfig(
         system_instruction=STAGE2_SYSTEM_PROMPT,
         temperature=0.3,
     )
-    try:
-        response = STAGE2_CLIENT.models.generate_content(
-            model=STAGE2_MODEL,
-            contents=contents,
-            config=config_with,
-        )
-        return response, True
-    except Exception:
-        response = STAGE2_CLIENT.models.generate_content(
-            model=STAGE2_MODEL,
-            contents=contents,
-            config=config_without,
-        )
-        return response, False
-
+    response = STAGE2_CLIENT.models.generate_content(
+        model=STAGE2_MODEL,
+        contents=contents,
+        config=config_without,
+    )
+    return response, False
 
 def build_stage1_input(domain: str, metadata: dict) -> str:
     base = {"domain": domain, "title": metadata.get("title", "")}
 
-    if domain in ("movie","film"):
+    if domain in ("movie", "film"):
         base.update({
             "genre": metadata.get("genre", ""),
-            "synopsis": metadata.get("synopsis", ""),
+            "synopsis": metadata.get("synopsis", "") or metadata.get("description", ""),
             "director": metadata.get("director", ""),
             "year": metadata.get("year", ""),
         })
@@ -166,34 +151,42 @@ async def run_stage2(analysis: dict, history: list, exclude_domains: list, exclu
             elapsed_ms = round((time.time() - start) * 1000)
 
             result = parse_llm_response(response.text)
+
+            if "error" in result:
+                if attempt < MAX_RETRIES - 1:
+                    await asyncio.sleep(1)
+                    continue
+
             recs = result.get("recommendations", {})
-            empty_domains = [k for k, v in recs.items() if not v and k not in exclude_domains]
-            if empty_domains and attempt < MAX_RETRIES - 1:
+
+            # 빈 배열 또는 키 누락 → 재시도
+            expected_domains = [d for d in ["movie", "book", "music"] if d not in exclude_domains]
+            missing = [d for d in expected_domains if not recs.get(d)]
+            if missing and attempt < MAX_RETRIES - 1:
                 await asyncio.sleep(1)
                 continue
 
             # 히스토리 중복 제거
             history_titles = {item.get("title", "").strip() for item in trimmed_history}
-            for domain, items in recs.items():
-                recs[domain] = [item for item in items if item.get("title", "").strip() not in history_titles]
+            for domain in recs:
+                recs[domain] = [i for i in recs[domain] if i.get("title", "").strip() not in history_titles]
 
+            # 도메인 내 중복 제거
+            for domain in recs:
+                seen = set()
+                deduped = []
+                for item in recs[domain]:
+                    t = item.get("title", "").strip()
+                    if t not in seen:
+                        seen.add(t)
+                        deduped.append(item)
+                recs[domain] = deduped
+
+            # exclude_domains 제거
             for d in exclude_domains:
-                result.get("recommendations", {}).pop(d, None)
-            result["recommendations"] = {
-                k: v for k, v in result.get("recommendations", {}).items() if v
-            }
+                recs.pop(d, None)
 
-            recs = result.get("recommendations", {})
-            total_count = sum(len(v) for v in recs.values())
-            if total_count == 0 and exclude_domains and attempt < MAX_RETRIES - 1:
-                payload = json.dumps({
-                    "analysis": analysis,
-                    "history": trimmed_history,
-                    "exclude_domains": [],
-                }, ensure_ascii=False)
-                contents = [{"role": "user", "parts": [{"text": payload}]}]
-                await asyncio.sleep(1)
-                continue
+            result["recommendations"] = recs
 
             if len(history) < 1:
                 result["map_title"] = exclude_title or ""
@@ -219,4 +212,3 @@ async def run_stage2(analysis: dict, history: list, exclude_domains: list, exclu
         "grounding_used": False,
         "history_trimmed": False,
     }
-    
