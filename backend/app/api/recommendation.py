@@ -148,6 +148,11 @@ async def get_recommendation(
     except Exception:
         raise AIException()
 
+    # AI가 간헐적으로 일부 도메인을 누락한 응답을 반환함 — 캐시되면 24시간 고정되므로
+    # 불완전 응답은 사용자에게 반환하되 캐시는 건너뛰어 다음 요청에서 재시도되게 한다
+    expected_domains = {"movie", "book", "music"} - set(request.exclude_domains)
+    is_complete = all(ai_response.recommendations.get(d) for d in expected_domains)
+
     # 3. 추천 항목 이미지 병렬 조회
     flat_items = [
         (domain, item)
@@ -197,13 +202,14 @@ async def get_recommendation(
         recommendations=ai_response.recommendations, map_title=ai_response.map_title
     )
 
-    # 5. 캐시 저장 (24시간 TTL)
-    cache = RecommendationCache(
-        cache_key=cache_key,
-        result=response.model_dump(mode="json"),
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=CACHE_TTL_HOURS),
-    )
-    db.add(cache)
+    # 5. 캐시 저장 (24시간 TTL) — 완전한 응답만 캐시
+    if is_complete:
+        cache = RecommendationCache(
+            cache_key=cache_key,
+            result=response.model_dump(mode="json"),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=CACHE_TTL_HOURS),
+        )
+        db.add(cache)
     await db.commit()
 
     return response
