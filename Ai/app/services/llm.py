@@ -166,6 +166,16 @@ async def run_stage2(analysis: dict, history: list, exclude_domains: list, exclu
             elapsed_ms = round((time.time() - start) * 1000)
 
             result = parse_llm_response(response.text)
+            recs = result.get("recommendations", {})
+            empty_domains = [k for k, v in recs.items() if not v and k not in exclude_domains]
+            if empty_domains and attempt < MAX_RETRIES - 1:
+                await asyncio.sleep(1)
+                continue
+
+            # 히스토리 중복 제거
+            history_titles = {item.get("title", "").strip() for item in trimmed_history}
+            for domain, items in recs.items():
+                recs[domain] = [item for item in items if item.get("title", "").strip() not in history_titles]
 
             for d in exclude_domains:
                 result.get("recommendations", {}).pop(d, None)
@@ -209,3 +219,4 @@ async def run_stage2(analysis: dict, history: list, exclude_domains: list, exclu
         "grounding_used": False,
         "history_trimmed": False,
     }
+    
