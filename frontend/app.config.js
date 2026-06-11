@@ -23,14 +23,18 @@ module.exports = {
         monochromeImage: "./assets/android-icon-monochrome.png"
       },
       predictiveBackGestureEnabled: false,
-      package: "com.taennny.molib",
-      usesCleartextTraffic: true
+      package: "com.taennny.molib"
     },
     web: {
       favicon: "./assets/favicon.png"
     },
     plugins: [
-      "expo-secure-store"
+      "expo-secure-store",
+      ["expo-build-properties", {
+        android: {
+          usesCleartextTraffic: true
+        }
+      }]
     ],
     extra: {
       eas: {
