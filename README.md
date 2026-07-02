@@ -11,6 +11,8 @@
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)
 ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat&logo=githubactions&logoColor=white)
 
+<img src="docs/img/molib.png" alt="Mo:lib 프로젝트 포스터 — 개발 배경 · 아키텍처 · Gemini 파이프라인 · 기능" width="760">
+
 ## 서비스 개요
 
 외부 콘텐츠 API(TMDB · 알라딘 · Spotify)의 응답을 표준 JSON으로 정규화한 뒤,
